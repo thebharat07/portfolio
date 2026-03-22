@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CTF Writeup: Exposed API Key in Client-Side JS — Keys of the All-Father</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0a080c;
+      --bg2: #100d14;
+      --bg3: #16121c;
+      --border: #1e1828;
+      --accent: #e879f9;
+      --accent2: #f0abfc;
+      --green: #4ade80;
+      --blue: #38bdf8;
+      --purple: #c084fc;
+      --red: #f87171;
+      --yellow: #fbbf24;
+      --pink: #f472b6;
+      --text: #e2e8f0;
+      --muted: #4b5563;
+      --code-bg: #08060a;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Syne', sans-serif;
+      line-height: 1.7;
+      min-height: 100vh;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 70% 40% at 30% -10%, rgba(232, 121, 249, 0.07) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 35% at 80% 110%, rgba(192, 132, 252, 0.05) 0%, transparent 60%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 0 24px;
+      position: relative;
+      z-index: 1;
+    }
+
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 20px 0;
+      position: sticky;
+      top: 0;
+      background: rgba(10, 8, 12, 0.93);
+      backdrop-filter: blur(12px);
+      z-index: 100;
+    }
+
+    .nav { display: flex; align-items: center; justify-content: space-between; }
+
+    .nav-brand {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .nav-tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      padding: 4px 10px;
+      border-radius: 4px;
+    }
+
+    .hero {
+      padding: 80px 0 60px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .category-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--accent);
+      background: rgba(232, 121, 249, 0.08);
+      border: 1px solid rgba(232, 121, 249, 0.2);
+      padding: 5px 12px;
+      border-radius: 4px;
+      margin-bottom: 28px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .category-tag::before { content: '▶'; font-size: 8px; }
+
+    h1 {
+      font-size: clamp(32px, 5vw, 52px);
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+      margin-bottom: 20px;
+      background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .subtitle {
+      font-size: 18px;
+      color: var(--muted);
+      max-width: 600px;
+      line-height: 1.6;
+      margin-bottom: 36px;
+    }
+
+    .meta-row { display: flex; flex-wrap: wrap; gap: 24px; align-items: center; }
+
+    .meta-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .meta-item .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+
+    .difficulty {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--green);
+      background: rgba(74, 222, 128, 0.08);
+      border: 1px solid rgba(74, 222, 128, 0.2);
+      padding: 4px 10px;
+      border-radius: 4px;
+    }
+
+    .tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 28px; }
+
+    .tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--pink);
+      background: rgba(244, 114, 182, 0.06);
+      border: 1px solid rgba(244, 114, 182, 0.15);
+      padding: 4px 10px;
+      border-radius: 4px;
+    }
+
+    .content { padding: 60px 0; }
+
+    .tldr {
+      background: rgba(232, 121, 249, 0.06);
+      border: 1px solid rgba(232, 121, 249, 0.2);
+      border-left: 3px solid var(--accent);
+      border-radius: 8px;
+      padding: 24px 28px;
+      margin-bottom: 48px;
+    }
+
+    .tldr-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    .tldr p { font-size: 15px; color: #cbd5e1; line-height: 1.6; }
+
+    .flag-box {
+      background: rgba(74, 222, 128, 0.06);
+      border: 1px solid rgba(74, 222, 128, 0.2);
+      border-radius: 8px;
+      padding: 20px 24px;
+      margin: 32px 0;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .flag-icon { font-size: 28px; flex-shrink: 0; }
+    .flag-label { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--green); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 4px; }
+    .flag-value { font-family: 'JetBrains Mono', monospace; font-size: 16px; font-weight: 700; color: var(--green); }
+
+    h2 {
+      font-size: 26px;
+      font-weight: 800;
+      color: #fff;
+      margin: 56px 0 20px;
+      letter-spacing: -0.01em;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    h2::before {
+      content: attr(data-num);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: var(--accent);
+      background: rgba(232, 121, 249, 0.1);
+      border: 1px solid rgba(232, 121, 249, 0.2);
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-weight: 700;
+    }
+
+    h3 { font-size: 18px; font-weight: 700; color: #cbd5e1; margin: 32px 0 12px; }
+    p { font-size: 16px; color: #94a3b8; margin-bottom: 16px; line-height: 1.75; }
+    strong { color: #e2e8f0; font-weight: 700; }
+
+    .code-block {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin: 20px 0;
+      overflow: hidden;
+    }
+
+    .code-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      background: var(--bg3);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .code-lang { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
+    .code-dots { display: flex; gap: 6px; }
+    .code-dots span { width: 10px; height: 10px; border-radius: 50%; }
+    .code-dots span:nth-child(1) { background: #ff5f57; }
+    .code-dots span:nth-child(2) { background: #febc2e; }
+    .code-dots span:nth-child(3) { background: #28c840; }
+
+    pre {
+      padding: 20px;
+      overflow-x: auto;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      line-height: 1.65;
+    }
+
+    .kw { color: #c792ea; }
+    .str { color: #c3e88d; }
+    .fn { color: #82aaff; }
+    .cm { color: #3d3050; font-style: italic; }
+    .var { color: #f78c6c; }
+    .num { color: #f78c6c; }
+    .key { color: #89ddff; }
+    .hl { color: #fbbf24; font-weight: 700; }
+    .good { color: #4ade80; }
+    .bad { color: #f87171; }
+    .accent { color: #e879f9; font-weight: 700; }
+
+    code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: var(--accent2);
+      background: rgba(232, 121, 249, 0.08);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .info-box {
+      background: rgba(56, 189, 248, 0.06);
+      border: 1px solid rgba(56, 189, 248, 0.15);
+      border-left: 3px solid var(--blue);
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin: 20px 0;
+    }
+
+    .info-box p { margin: 0; font-size: 14px; color: #93c5fd; }
+
+    .warning-box {
+      background: rgba(248, 113, 113, 0.06);
+      border: 1px solid rgba(248, 113, 113, 0.15);
+      border-left: 3px solid var(--red);
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin: 20px 0;
+    }
+
+    .warning-box p { margin: 0; font-size: 14px; color: #fca5a5; }
+
+    .success-box {
+      background: rgba(74, 222, 128, 0.06);
+      border: 1px solid rgba(74, 222, 128, 0.15);
+      border-left: 3px solid var(--green);
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin: 20px 0;
+    }
+
+    .success-box p { margin: 0; font-size: 14px; color: #86efac; }
+
+    .finding {
+      background: linear-gradient(135deg, rgba(232, 121, 249, 0.08), rgba(192, 132, 252, 0.04));
+      border: 1px solid rgba(232, 121, 249, 0.2);
+      border-radius: 10px;
+      padding: 20px 24px;
+      margin: 24px 0;
+    }
+
+    .finding-label { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--accent); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 8px; }
+    .finding p { margin: 0; font-size: 15px; color: #f0abfc; }
+
+    /* S3 hosted badge */
+    .s3-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(251, 191, 36, 0.08);
+      border: 1px solid rgba(251, 191, 36, 0.2);
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin: 16px 0;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: var(--yellow);
+    }
+
+    /* Attack flow */
+    .attack-flow {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 32px;
+      margin: 32px 0;
+    }
+
+    .flow-title { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 24px; }
+
+    .flow-steps { display: flex; flex-direction: column; gap: 0; }
+
+    .flow-step { display: flex; align-items: flex-start; gap: 16px; position: relative; }
+
+    .flow-step:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      left: 18px;
+      top: 36px;
+      width: 1px;
+      height: calc(100% - 12px);
+      background: var(--border);
+    }
+
+    .flow-num {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(232, 121, 249, 0.1);
+      border: 1px solid rgba(232, 121, 249, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--accent);
+      flex-shrink: 0;
+      position: relative;
+      z-index: 1;
+    }
+
+    .flow-content { padding: 6px 0 28px; }
+    .flow-label { font-size: 15px; font-weight: 700; color: #e2e8f0; margin-bottom: 4px; }
+    .flow-desc { font-size: 13px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+
+    /* API endpoint anatomy */
+    .endpoint-anatomy {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 24px;
+      margin: 24px 0;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+    }
+
+    .endpoint-url {
+      word-break: break-all;
+      line-height: 2;
+      margin-bottom: 16px;
+    }
+
+    .url-scheme { color: #4b5563; }
+    .url-host { color: var(--yellow); }
+    .url-path-v1 { color: #f87171; }
+    .url-path-v2 { color: #4ade80; }
+    .url-path-internal { color: var(--accent); }
+    .url-path-flag { color: #fbbf24; }
+
+    .url-legend {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+    }
+
+    .url-legend-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .legend-swatch {
+      width: 12px;
+      height: 12px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+
+    /* Troll vs real */
+    .compare-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin: 24px 0;
+    }
+
+    .compare-card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+    }
+
+    .compare-card.bad { border-color: rgba(248, 113, 113, 0.2); }
+    .compare-card.good { border-color: rgba(74, 222, 128, 0.2); }
+
+    .compare-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    .compare-label.bad { color: var(--red); }
+    .compare-label.good { color: var(--green); }
+
+    .compare-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: #94a3b8;
+      line-height: 1.6;
+    }
+
+    /* Vuln cards */
+    .vuln-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; margin: 24px 0; }
+
+    .vuln-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; transition: border-color 0.2s; }
+    .vuln-card:hover { border-color: rgba(232, 121, 249, 0.3); }
+    .vuln-num { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent); margin-bottom: 8px; }
+    .vuln-title { font-size: 15px; font-weight: 700; color: #e2e8f0; margin-bottom: 8px; }
+    .vuln-desc { font-size: 13px; color: var(--muted); line-height: 1.6; }
+
+    .divider { border: none; border-top: 1px solid var(--border); margin: 48px 0; }
+
+    footer { border-top: 1px solid var(--border); padding: 40px 0; margin-top: 40px; }
+
+    .footer-content { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; }
+    .footer-text { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--muted); }
+    .footer-badge { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--green); background: rgba(74, 222, 128, 0.08); border: 1px solid rgba(74, 222, 128, 0.2); padding: 4px 12px; border-radius: 4px; }
+
+    @media (max-width: 600px) {
+      .meta-row { flex-direction: column; gap: 12px; }
+      h2 { font-size: 22px; }
+      .compare-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <nav class="nav">
+      <span class="nav-brand">RedFox CTF</span>
+      <span class="nav-tag">writeup / web / api-security</span>
+    </nav>
+  </div>
+</header>
+
+<div class="container">
+
+  <section class="hero">
+    <div class="category-tag">Web Security · API Key Exposure</div>
+    <h1>Keys of the All-Father: <br>Exposed API Key in S3-Hosted JS</h1>
+    <p class="subtitle">An API key hardcoded in a publicly accessible JavaScript file on Amazon S3 — and a troll flag that pointed us to the real endpoint hiding in plain sight.</p>
+
+    <div class="meta-row">
+      <div class="meta-item"><span class="dot"></span><span>RedFox CTF 2026</span></div>
+      <div class="meta-item"><span class="dot"></span><span>Category: Web / API Security</span></div>
+      <div class="meta-item"><span class="dot"></span><span>Challenge: Keys of the All-Father</span></div>
+      <div class="difficulty">EASY</div>
+    </div>
+
+    <div class="tags">
+      <span class="tag">api-key-exposure</span>
+      <span class="tag">client-side-secrets</span>
+      <span class="tag">s3-static-hosting</span>
+      <span class="tag">aws-api-gateway</span>
+      <span class="tag">source-code-review</span>
+      <span class="tag">troll-flag</span>
+    </div>
+  </section>
+
+  <article class="content">
+
+    <div class="tldr">
+      <div class="tldr-label">TL;DR</div>
+      <p>A static website hosted on <strong>Amazon S3</strong> loaded a JavaScript file containing a hardcoded API key and endpoint URL. Calling the endpoint with the key returned a troll flag — but switching from <strong>/v1/</strong> to <strong>/v2/internal/flag</strong> (already in the JS source) returned the real flag.</p>
+    </div>
+
+    <div class="flag-box">
+      <div class="flag-icon">🚩</div>
+      <div>
+        <div class="flag-label">Flag</div>
+        <div class="flag-value">REDFOX{*********}</div>
+      </div>
+    </div>
+
+    <!-- Challenge Description -->
+    <h2 data-num="01">Challenge Description</h2>
+    <p>The challenge lore read:</p>
+    <div class="info-box">
+      <p><em>"A service within the realms relies on hidden keys to grant access to its deeper knowledge. These keys are not meant to be seen, yet sometimes they are left where curious eyes may find them. Systems trust that what is hidden will remain hidden... but that is not always the case. Look closely at how access is granted. You may already have everything you need."</em></p>
+    </div>
+    <p>The challenge gave us a URL to a static website. The hint <strong>"you may already have everything you need"</strong> was the key — everything required to solve it was already on the page.</p>
+
+    <!-- Step 1 -->
+    <h2 data-num="02">Step 1 — Source Code Inspection</h2>
+    <p>The first thing to do with any web challenge is view the page source. We opened the page and immediately noticed it was served from Amazon S3 — visible from the response headers:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">http response headers</span>
+      </div>
+      <pre>HTTP/1.1 200 OK
+<span class="hl">Server: AmazonS3</span>
+x-amz-request-id: N83TSAVNFHPM1E2N
+Content-Type: text/html
+Last-Modified: Sat, 21 Mar 2026 09:28:21 GMT</pre>
+    </div>
+
+    <div class="s3-badge">
+      ☁️ &nbsp;Hosted on Amazon S3 — static files are publicly accessible via HTTP
+    </div>
+
+    <p>The HTML source contained a script tag loading a JavaScript file from S3. We fetched it directly:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">bash</span>
+      </div>
+      <pre>curl https://zw20ng1w0m.execute-api.ap-south-1.amazonaws.com/static/app.js</pre>
+    </div>
+
+    <p>The JavaScript file contained the following code:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">javascript — app.js (served from S3)</span>
+      </div>
+      <pre><span class="kw">const</span> <span class="var">API_URL</span> = <span class="hl">"https://zw20ng1w0m.execute-api.ap-south-1.amazonaws.com/v2/internal/flag"</span>;
+
+<span class="kw">async function</span> <span class="fn">getFlag</span>() {
+    <span class="kw">const</span> out = document.<span class="fn">getElementById</span>(<span class="str">"output"</span>);
+    out.textContent = <span class="str">"⏳ Sending request…"</span>;
+    <span class="kw">try</span> {
+        <span class="kw">const</span> res = <span class="kw">await</span> <span class="fn">fetch</span>(API_URL, {
+            method: <span class="str">"GET"</span>,
+            headers: {
+                <span class="hl">"x-api-key": "my-super-secret-api-key-12345"</span>
+            }
+        });
+        <span class="kw">const</span> data = <span class="kw">await</span> res.<span class="fn">json</span>();
+        out.textContent = <span class="fn">JSON.stringify</span>(data, <span class="num">null</span>, <span class="num">2</span>);
+    } <span class="kw">catch</span> (err) {
+        out.textContent = <span class="str">"❌ Error: "</span> + err;
+    }
+}</pre>
+    </div>
+
+    <div class="finding">
+      <div class="finding-label">⚡ Critical Discovery</div>
+      <p>Two secrets hardcoded in plain JavaScript — an <strong>API endpoint URL</strong> and an <strong>API key</strong> — both completely visible to anyone who views the page source. This is one of the most common real-world vulnerabilities.</p>
+    </div>
+
+    <p>The extracted credentials were:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">extracted secrets</span>
+      </div>
+      <pre><span class="var">API_URL</span> = <span class="str">"https://zw20ng1w0m.execute-api.ap-south-1.amazonaws.com/v2/internal/flag"</span>
+<span class="var">API_KEY</span> = <span class="hl">"my-super-secret-api-key-12345"</span></pre>
+    </div>
+
+    <!-- Step 2 -->
+    <h2 data-num="03">Step 2 — Call the API with the Extracted Key</h2>
+    <p>We directly called the API endpoint using the hardcoded key in the <code>x-api-key</code> header:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">bash</span>
+      </div>
+      <pre>curl -H <span class="str">"x-api-key: my-super-secret-api-key-12345"</span> \
+  https://zw20ng1w0m.execute-api.ap-south-1.amazonaws.com/v2/internal/flag</pre>
+    </div>
+
+    <p><strong>Response:</strong></p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">json</span>
+      </div>
+      <pre>{<span class="str">"flag"</span>: <span class="bad">"REDFOX{ALMOST_THERE_JUST_NOT_HERE}"</span>}</pre>
+    </div>
+
+    <p>A troll flag! The challenge was telling us we were close but needed to look harder. The endpoint was right, the key was right — but this was a decoy response designed to mislead.</p>
+
+    <!-- Step 3 -->
+    <h2 data-num="04">Step 3 — Analyzing the API URL Structure</h2>
+    <p>We looked more carefully at the URL structure. The endpoint was:</p>
+
+    <div class="endpoint-anatomy">
+      <div class="endpoint-url">
+        <span class="url-scheme">https://</span><span class="url-host">zw20ng1w0m.execute-api.ap-south-1.amazonaws.com</span><span class="url-path-v2">/v2</span><span class="url-path-internal">/internal</span><span class="url-path-flag">/flag</span>
+      </div>
+      <div class="url-legend">
+        <div class="url-legend-item">
+          <div class="legend-swatch" style="background: #fbbf24;"></div>
+          <span>execute-api.amazonaws.com → AWS API Gateway endpoint</span>
+        </div>
+        <div class="url-legend-item">
+          <div class="legend-swatch" style="background: #4ade80;"></div>
+          <span>/v2 → API version 2 (the one in the JS source)</span>
+        </div>
+        <div class="url-legend-item">
+          <div class="legend-swatch" style="background: #e879f9;"></div>
+          <span>/internal → restricted internal path</span>
+        </div>
+        <div class="url-legend-item">
+          <div class="legend-swatch" style="background: #fbbf24;"></div>
+          <span>/flag → the flag endpoint</span>
+        </div>
+      </div>
+    </div>
+
+    <p>The JS source already had <code>/v2/internal/flag</code> — but returning a troll flag suggested there might be other versions or paths. We tried <code>/v1/</code> — the older version that was perhaps less protected:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">bash</span>
+      </div>
+      <pre><span class="cm"># Try version 1 of the API</span>
+curl -H <span class="str">"x-api-key: my-super-secret-api-key-12345"</span> \
+  https://zw20ng1w0m.execute-api.ap-south-1.amazonaws.com/<span class="hl">v1</span>/internal/flag</pre>
+    </div>
+
+    <p><strong>Response:</strong></p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">json</span>
+      </div>
+      <pre>{<span class="str">"flag"</span>: <span class="good">"REDFOX{*********}"</span>}</pre>
+    </div>
+
+    <div class="flag-box">
+      <div class="flag-icon">🚩</div>
+      <div>
+        <div class="flag-label">Flag Captured!</div>
+        <div class="flag-value">FREDFOX{*********}</div>
+      </div>
+    </div>
+
+    <!-- Troll vs Real -->
+    <h2 data-num="05">Troll Flag vs Real Flag</h2>
+    <p>The challenge used a classic CTF misdirection — returning a fake flag that looks real enough to trick you into thinking you're done, while the actual flag requires one more step of thinking.</p>
+
+    <div class="compare-grid">
+      <div class="compare-card bad">
+        <div class="compare-label bad">🎭 Troll Flag</div>
+        <div class="compare-value">
+          Endpoint: /v2/internal/flag<br>
+          Response: FLAG{ALMOST_THERE_JUST_NOT_HERE}<br><br>
+          The "obvious" endpoint in the JS source — designed to mislead.
+        </div>
+      </div>
+      <div class="compare-card good">
+        <div class="compare-label good">✅ Real Flag</div>
+        <div class="compare-value">
+          Endpoint: /v1/internal/flag<br>
+          Response: REDFOX{*********}<br><br>
+          The older API version — still live, still accepting the same key.
+        </div>
+      </div>
+    </div>
+
+    <!-- Attack Flow -->
+    <h2 data-num="06">Full Attack Flow</h2>
+
+    <div class="attack-flow">
+      <div class="flow-title">// complete attack chain</div>
+      <div class="flow-steps">
+
+        <div class="flow-step">
+          <div class="flow-num">1</div>
+          <div class="flow-content">
+            <div class="flow-label">Visit the Challenge URL</div>
+            <div class="flow-desc">Static site served from Amazon S3 — Server: AmazonS3 header visible</div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-num">2</div>
+          <div class="flow-content">
+            <div class="flow-label">View Page Source</div>
+            <div class="flow-desc">Identify &lt;script src="app.js"&gt; loading external JS from S3</div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-num">3</div>
+          <div class="flow-content">
+            <div class="flow-label">Fetch and Read app.js</div>
+            <div class="flow-desc">curl the JS file → find hardcoded API_URL and x-api-key</div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-num">4</div>
+          <div class="flow-content">
+            <div class="flow-label">Call /v2/internal/flag</div>
+            <div class="flow-desc">Get troll flag: REDFOX{ALMOST_THERE_JUST_NOT_HERE}</div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-num">5</div>
+          <div class="flow-content">
+            <div class="flow-label">Enumerate API Versions</div>
+            <div class="flow-desc">Try /v1/internal/flag with the same API key</div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-num">6</div>
+          <div class="flow-content">
+            <div class="flow-label">Flag Captured</div>
+            <div class="flow-desc">REDFOX{*********}</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- Why it happens -->
+    <h2 data-num="07">Why This Happens in the Real World</h2>
+    <p>This is not just a CTF scenario — exposed API keys in client-side JavaScript are one of the most common and most impactful real-world vulnerabilities. Here's why it keeps happening:</p>
+
+    <div class="vuln-grid">
+      <div class="vuln-card">
+        <div class="vuln-num">REASON_01</div>
+        <div class="vuln-title">Development convenience</div>
+        <div class="vuln-desc">Developers hardcode keys during development for convenience and forget to remove them before deployment.</div>
+      </div>
+      <div class="vuln-card">
+        <div class="vuln-num">REASON_02</div>
+        <div class="vuln-title">Misunderstanding of "hidden"</div>
+        <div class="vuln-desc">Teams assume minified or bundled JS is hard to read — but deobfuscation tools make it trivial to extract strings.</div>
+      </div>
+      <div class="vuln-card">
+        <div class="vuln-num">REASON_03</div>
+        <div class="vuln-title">S3 public access</div>
+        <div class="vuln-desc">Static assets on S3 are publicly accessible by design — there is no concept of "server-side only" for S3-hosted files.</div>
+      </div>
+      <div class="vuln-card">
+        <div class="vuln-num">REASON_04</div>
+        <div class="vuln-title">Old API versions</div>
+        <div class="vuln-desc">API v1 was never decommissioned when v2 was deployed — old endpoints often have weaker protection or are forgotten entirely.</div>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- Vulnerabilities -->
+    <h2 data-num="08">Vulnerabilities & Fixes</h2>
+
+    <h3>1. API Key Hardcoded in Client-Side JavaScript</h3>
+    <p>The most fundamental mistake. Any secret placed in JavaScript that runs in the browser is accessible to anyone. Period. Minification, obfuscation, and bundling offer zero real protection — all of it can be reversed.</p>
+    <div class="warning-box">
+      <p><strong>Fix:</strong> API keys must live server-side only. The browser should call your own backend, which then calls the third-party API with the key. The key never touches the client. Use environment variables on the server — never in frontend build output.</p>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-lang">architecture — correct approach</span>
+      </div>
+      <pre><span class="cm">// ❌ WRONG: key in frontend JS (visible to everyone)</span>
+<span class="kw">const</span> res = <span class="kw">await</span> <span class="fn">fetch</span>(EXTERNAL_API, {
+  headers: { <span class="str">'x-api-key'</span>: <span class="bad">'my-super-secret-api-key-12345'</span> }
+});
+
+<span class="cm">// ✅ CORRECT: browser calls YOUR backend proxy</span>
+<span class="kw">const</span> res = <span class="kw">await</span> <span class="fn">fetch</span>(<span class="str">'/api/proxy/flag'</span>);
+<span class="cm">// Your backend (Node/Python/etc) adds the secret header:</span>
+<span class="cm">// fetch(EXTERNAL_API, { headers: { 'x-api-key': process.env.API_KEY } })</span></pre>
+    </div>
+
+    <h3>2. Static Files Hosted on Public S3</h3>
+    <p>S3-hosted static websites are entirely public. Every file — HTML, CSS, JavaScript, images — is readable by anyone on the internet. There is no authentication layer for static S3 hosting.</p>
+    <div class="warning-box">
+      <p><strong>Fix:</strong> Never store sensitive configuration or secrets in S3-hosted static files. Use CloudFront with signed URLs if you need access control. Treat every S3 static file as completely public regardless of what it contains.</p>
+    </div>
+
+    <h3>3. Undeprecated API Versions</h3>
+    <p>The v1 API endpoint was still active and accepting the same key as v2. Old API versions are frequently forgotten, less monitored, and may have weaker access controls than newer versions.</p>
+    <div class="warning-box">
+      <p><strong>Fix:</strong> Decommission old API versions properly. Use API Gateway usage plans and stages to enforce which versions are active. Set sunset dates and return deprecation headers before retiring versions. Monitor all active endpoints equally.</p>
+    </div>
+
+    <h3>4. No Rate Limiting or Key Scoping</h3>
+    <p>The API key worked on all endpoints with no restriction. A properly scoped key would only grant access to the specific resources it needs — not all internal endpoints.</p>
+    <div class="warning-box">
+      <p><strong>Fix:</strong> Apply the principle of least privilege to API keys. Scope keys to specific endpoints, HTTP methods, and IP ranges where possible. Implement rate limiting on all API Gateway endpoints. Rotate keys regularly and monitor usage for anomalies.</p>
+    </div>
+
+
+<footer>
+  <div class="container">
+    <div class="footer-content">
+      <div class="footer-text">RedFox CTF 2026 — Exposed API Key in S3-Hosted JS Writeup</div>
+      <div class="footer-badge">✓ SOLVED</div>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

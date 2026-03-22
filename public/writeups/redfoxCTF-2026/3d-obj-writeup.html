@@ -1,0 +1,1185 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CTF Writeup: The NewAge — Hex to 3D OBJ</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #080c0a;
+        --bg2: #0c1210;
+        --bg3: #111a16;
+        --border: #182420;
+        --accent: #10b981;
+        --accent2: #34d399;
+        --green: #4ade80;
+        --blue: #38bdf8;
+        --purple: #a78bfa;
+        --red: #f87171;
+        --yellow: #fbbf24;
+        --teal: #2dd4bf;
+        --text: #e2e8f0;
+        --muted: #4b5563;
+        --code-bg: #060a08;
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: "Syne", sans-serif;
+        line-height: 1.7;
+        min-height: 100vh;
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");
+        pointer-events: none;
+        z-index: 0;
+      }
+
+      body::after {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background:
+          radial-gradient(
+            ellipse 80% 50% at 50% -20%,
+            rgba(16, 185, 129, 0.07) 0%,
+            transparent 60%
+          ),
+          radial-gradient(
+            ellipse 60% 40% at 80% 100%,
+            rgba(45, 212, 191, 0.04) 0%,
+            transparent 60%
+          );
+        pointer-events: none;
+        z-index: 0;
+      }
+
+      .container {
+        max-width: 860px;
+        margin: 0 auto;
+        padding: 0 24px;
+        position: relative;
+        z-index: 1;
+      }
+
+      header {
+        border-bottom: 1px solid var(--border);
+        padding: 20px 0;
+        position: sticky;
+        top: 0;
+        background: rgba(8, 12, 10, 0.93);
+        backdrop-filter: blur(12px);
+        z-index: 100;
+      }
+
+      .nav {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .nav-brand {
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--accent);
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      .nav-tag {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        color: var(--muted);
+        background: var(--bg3);
+        border: 1px solid var(--border);
+        padding: 4px 10px;
+        border-radius: 4px;
+      }
+
+      .hero {
+        padding: 80px 0 60px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .category-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        color: var(--accent);
+        background: rgba(16, 185, 129, 0.08);
+        border: 1px solid rgba(16, 185, 129, 0.2);
+        padding: 5px 12px;
+        border-radius: 4px;
+        margin-bottom: 28px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .category-tag::before {
+        content: "▶";
+        font-size: 8px;
+      }
+
+      h1 {
+        font-size: clamp(32px, 5vw, 52px);
+        font-weight: 800;
+        line-height: 1.1;
+        letter-spacing: -0.02em;
+        margin-bottom: 20px;
+        background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+
+      .subtitle {
+        font-size: 18px;
+        color: var(--muted);
+        max-width: 600px;
+        line-height: 1.6;
+        margin-bottom: 36px;
+      }
+
+      .meta-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 24px;
+        align-items: center;
+      }
+
+      .meta-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .meta-item .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--accent);
+      }
+
+      .difficulty {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--green);
+        background: rgba(74, 222, 128, 0.08);
+        border: 1px solid rgba(74, 222, 128, 0.2);
+        padding: 4px 10px;
+        border-radius: 4px;
+      }
+
+      .tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 28px;
+      }
+
+      .tag {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        color: var(--teal);
+        background: rgba(45, 212, 191, 0.06);
+        border: 1px solid rgba(45, 212, 191, 0.15);
+        padding: 4px 10px;
+        border-radius: 4px;
+      }
+
+      .content {
+        padding: 60px 0;
+      }
+
+      .tldr {
+        background: rgba(16, 185, 129, 0.06);
+        border: 1px solid rgba(16, 185, 129, 0.2);
+        border-left: 3px solid var(--accent);
+        border-radius: 8px;
+        padding: 24px 28px;
+        margin-bottom: 48px;
+      }
+
+      .tldr-label {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--accent);
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        margin-bottom: 10px;
+      }
+
+      .tldr p {
+        font-size: 15px;
+        color: #cbd5e1;
+        line-height: 1.6;
+      }
+
+      .flag-box {
+        background: rgba(74, 222, 128, 0.06);
+        border: 1px solid rgba(74, 222, 128, 0.2);
+        border-radius: 8px;
+        padding: 20px 24px;
+        margin: 32px 0;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+
+      .flag-icon {
+        font-size: 28px;
+        flex-shrink: 0;
+      }
+
+      .flag-label {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        color: var(--green);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+      }
+
+      .flag-value {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--green);
+      }
+
+      h2 {
+        font-size: 26px;
+        font-weight: 800;
+        color: #fff;
+        margin: 56px 0 20px;
+        letter-spacing: -0.01em;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      h2::before {
+        content: attr(data-num);
+        font-family: "JetBrains Mono", monospace;
+        font-size: 13px;
+        color: var(--accent);
+        background: rgba(16, 185, 129, 0.1);
+        border: 1px solid rgba(16, 185, 129, 0.2);
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-weight: 700;
+      }
+
+      h3 {
+        font-size: 18px;
+        font-weight: 700;
+        color: #cbd5e1;
+        margin: 32px 0 12px;
+      }
+
+      p {
+        font-size: 16px;
+        color: #94a3b8;
+        margin-bottom: 16px;
+        line-height: 1.75;
+      }
+
+      strong {
+        color: #e2e8f0;
+        font-weight: 700;
+      }
+
+      .code-block {
+        background: var(--code-bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        margin: 20px 0;
+        overflow: hidden;
+      }
+
+      .code-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 16px;
+        background: var(--bg3);
+        border-bottom: 1px solid var(--border);
+      }
+
+      .code-lang {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        color: var(--muted);
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .code-dots {
+        display: flex;
+        gap: 6px;
+      }
+      .code-dots span {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+      }
+      .code-dots span:nth-child(1) {
+        background: #ff5f57;
+      }
+      .code-dots span:nth-child(2) {
+        background: #febc2e;
+      }
+      .code-dots span:nth-child(3) {
+        background: #28c840;
+      }
+
+      pre {
+        padding: 20px;
+        overflow-x: auto;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 13px;
+        line-height: 1.65;
+      }
+
+      .kw {
+        color: #c792ea;
+      }
+      .str {
+        color: #c3e88d;
+      }
+      .fn {
+        color: #82aaff;
+      }
+      .cm {
+        color: #3d5a4a;
+        font-style: italic;
+      }
+      .var {
+        color: #f78c6c;
+      }
+      .num {
+        color: #f78c6c;
+      }
+      .key {
+        color: #89ddff;
+      }
+      .hl {
+        color: #fbbf24;
+        font-weight: 700;
+      }
+      .good {
+        color: #4ade80;
+      }
+      .bad {
+        color: #f87171;
+      }
+
+      code {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 13px;
+        color: var(--accent2);
+        background: rgba(16, 185, 129, 0.08);
+        padding: 2px 6px;
+        border-radius: 4px;
+      }
+
+      .info-box {
+        background: rgba(56, 189, 248, 0.06);
+        border: 1px solid rgba(56, 189, 248, 0.15);
+        border-left: 3px solid var(--blue);
+        border-radius: 8px;
+        padding: 16px 20px;
+        margin: 20px 0;
+      }
+
+      .info-box p {
+        margin: 0;
+        font-size: 14px;
+        color: #93c5fd;
+      }
+
+      .warning-box {
+        background: rgba(251, 191, 36, 0.06);
+        border: 1px solid rgba(251, 191, 36, 0.15);
+        border-left: 3px solid var(--yellow);
+        border-radius: 8px;
+        padding: 16px 20px;
+        margin: 20px 0;
+      }
+
+      .warning-box p {
+        margin: 0;
+        font-size: 14px;
+        color: #fde68a;
+      }
+
+      .finding {
+        background: linear-gradient(
+          135deg,
+          rgba(16, 185, 129, 0.08),
+          rgba(45, 212, 191, 0.04)
+        );
+        border: 1px solid rgba(16, 185, 129, 0.2);
+        border-radius: 10px;
+        padding: 20px 24px;
+        margin: 24px 0;
+      }
+
+      .finding-label {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 10px;
+        color: var(--accent);
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        margin-bottom: 8px;
+      }
+
+      .finding p {
+        margin: 0;
+        font-size: 15px;
+        color: #6ee7b7;
+      }
+
+      /* Pipeline diagram */
+      .pipeline {
+        background: var(--bg2);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 28px;
+        margin: 28px 0;
+      }
+
+      .pipeline-title {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        color: var(--muted);
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        margin-bottom: 24px;
+      }
+
+      .pipe-steps {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+      }
+
+      .pipe-step {
+        display: flex;
+        align-items: flex-start;
+        gap: 16px;
+        position: relative;
+      }
+
+      .pipe-step:not(:last-child)::after {
+        content: "";
+        position: absolute;
+        left: 18px;
+        top: 36px;
+        width: 1px;
+        height: calc(100% - 12px);
+        background: var(--border);
+      }
+
+      .pipe-num {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: rgba(16, 185, 129, 0.1);
+        border: 1px solid rgba(16, 185, 129, 0.3);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--accent);
+        flex-shrink: 0;
+        position: relative;
+        z-index: 1;
+      }
+
+      .pipe-content {
+        padding: 6px 0 28px;
+      }
+
+      .pipe-label {
+        font-size: 15px;
+        font-weight: 700;
+        color: #e2e8f0;
+        margin-bottom: 4px;
+      }
+
+      .pipe-desc {
+        font-size: 13px;
+        color: var(--muted);
+        font-family: "JetBrains Mono", monospace;
+      }
+
+      .pipe-badge {
+        display: inline-block;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        margin-top: 6px;
+        padding: 2px 8px;
+        border-radius: 4px;
+      }
+
+      .badge-file {
+        color: var(--teal);
+        background: rgba(45, 212, 191, 0.08);
+        border: 1px solid rgba(45, 212, 191, 0.2);
+      }
+
+      .badge-tool {
+        color: var(--yellow);
+        background: rgba(251, 191, 36, 0.08);
+        border: 1px solid rgba(251, 191, 36, 0.2);
+      }
+
+      /* File format card */
+      .format-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 16px;
+        margin: 24px 0;
+      }
+
+      .format-card {
+        background: var(--bg2);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 20px;
+        transition: border-color 0.2s;
+      }
+
+      .format-card:hover {
+        border-color: rgba(16, 185, 129, 0.3);
+      }
+
+      .format-icon {
+        font-size: 24px;
+        margin-bottom: 10px;
+      }
+      .format-name {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--accent2);
+        margin-bottom: 6px;
+      }
+      .format-desc {
+        font-size: 13px;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+
+      /* hex preview */
+      .hex-preview {
+        background: var(--code-bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 20px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 12px;
+        line-height: 1.8;
+        overflow-x: auto;
+      }
+
+      .hex-offset {
+        color: #3d5a4a;
+      }
+      .hex-bytes {
+        color: #6ee7b7;
+      }
+      .hex-ascii {
+        color: #94a3b8;
+      }
+      .hex-highlight {
+        color: #fbbf24;
+        font-weight: 700;
+      }
+
+      .divider {
+        border: none;
+        border-top: 1px solid var(--border);
+        margin: 48px 0;
+      }
+
+      footer {
+        border-top: 1px solid var(--border);
+        padding: 40px 0;
+        margin-top: 40px;
+      }
+
+      .footer-content {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 16px;
+      }
+
+      .footer-text {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .footer-badge {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        color: var(--green);
+        background: rgba(74, 222, 128, 0.08);
+        border: 1px solid rgba(74, 222, 128, 0.2);
+        padding: 4px 12px;
+        border-radius: 4px;
+      }
+
+      @media (max-width: 600px) {
+        .meta-row {
+          flex-direction: column;
+          gap: 12px;
+        }
+        h2 {
+          font-size: 22px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="container">
+        <nav class="nav">
+          <span class="nav-brand">RedFox CTF</span>
+          <span class="nav-tag">writeup / forensics / steganography</span>
+        </nav>
+      </div>
+    </header>
+
+    <div class="container">
+      <section class="hero">
+        <div class="category-tag">Forensics · Steganography</div>
+        <h1>The NewAge:<br />Hex File to 3D OBJ</h1>
+        <p class="subtitle">
+          A file disguised as plain text, hiding a hex-encoded 3D model from
+          Tinkercad — revealing Kratos' reaction to humanity through a rendered
+          golf figure.
+        </p>
+
+        <div class="meta-row">
+          <div class="meta-item">
+            <span class="dot"></span><span>RedFox CTF 2026</span>
+          </div>
+          <div class="meta-item">
+            <span class="dot"></span><span>Category: Forensics</span>
+          </div>
+          <div class="meta-item">
+            <span class="dot"></span><span>Challenge: TheNewAge</span>
+          </div>
+          <div class="difficulty">EASY</div>
+        </div>
+
+        <div class="tags">
+          <span class="tag">forensics</span>
+          <span class="tag">steganography</span>
+          <span class="tag">hex-encoding</span>
+          <span class="tag">3d-obj</span>
+          <span class="tag">tinkercad</span>
+          <span class="tag">file-analysis</span>
+          <span class="tag">strings</span>
+        </div>
+      </section>
+
+      <article class="content">
+        <div class="tldr">
+          <div class="tldr-label">TL;DR</div>
+          <p>
+            We were given a file called <strong>TheNewAge</strong> — no
+            extension, 65536 characters long, no line terminators. Running
+            <code>file</code> on it revealed ASCII text. The content turned out
+            to be <strong>hex-encoded data</strong>. Decoding the hex produced a
+            <strong>Tinkercad 3D OBJ file</strong>. Opening it in a 3D viewer
+            revealed a golfer figure with a 3D text —
+            <strong>REDFOX{TH15_Is_U77erly_Unu5u4l}</strong>.
+          </p>
+        </div>
+
+        <div class="flag-box">
+          <div class="flag-icon">🚩</div>
+          <div>
+            <div class="flag-label">Flag / Answer</div>
+            <div class="flag-value">REDFOX{TH15_Is_U77erly_Unu5u4l}</div>
+          </div>
+        </div>
+
+        <!-- Challenge Description -->
+        <h2 data-num="01">Challenge Description</h2>
+        <p>The challenge lore read:</p>
+        <div class="info-box">
+          <p>
+            <em
+              >"Kratos used the Jotnar powers of prophecy to see into the future
+              and observe how humanity was going to turn out. He was shell
+              shocked, but amused. Can you spot what his reaction was?"</em
+            >
+          </p>
+        </div>
+        <p>
+          We were given a single file: <strong>TheNewAge</strong> with no file
+          extension. The task was to figure out what was inside it and identify
+          Kratos' reaction.
+        </p>
+
+        <!-- Step 1 -->
+        <h2 data-num="02">Step 1 — File Identification</h2>
+        <p>
+          The first step with any unknown file in a CTF is to run the
+          <code>file</code> command. Never assume a file is what it looks like —
+          file extensions lie, but magic bytes don't.
+        </p>
+
+        <div class="code-block">
+          <div class="code-header">
+            <div class="code-dots"><span></span><span></span><span></span></div>
+            <span class="code-lang">bash</span>
+          </div>
+          <pre>file TheNewAge</pre>
+        </div>
+
+        <p><strong>Output:</strong></p>
+        <div class="code-block">
+          <div class="code-header">
+            <div class="code-dots"><span></span><span></span><span></span></div>
+            <span class="code-lang">output</span>
+          </div>
+          <pre>TheNewAge: <span class="hl">ASCII text, with very long lines (65536), with no line terminators</span></pre>
+        </div>
+
+        <div class="finding">
+          <div class="finding-label">⚡ Key Observation</div>
+          <p>
+            65536 characters in a single line with no terminators is extremely
+            suspicious. This is a classic sign of
+            <strong>encoded binary data</strong> — likely base64 or hex. The
+            character count (65536 = 2^16) is also a power of 2, which is a
+            hint.
+          </p>
+        </div>
+
+        <p>We checked the first few characters to determine the encoding:</p>
+
+        <div class="code-block">
+          <div class="code-header">
+            <div class="code-dots"><span></span><span></span><span></span></div>
+            <span class="code-lang">bash</span>
+          </div>
+          <pre><span class="cm"># Check first 100 characters</span>
+head -c 100 TheNewAge</pre>
+        </div>
+
+        <p><strong>Output:</strong></p>
+        <div class="hex-preview">
+          <span class="hex-highlight"
+            >23204f626a656374204578706f72742046726f6d2054696e6b65726361642053657276657220323031350a0a6d746c6c6962</span
+          >...
+        </div>
+
+        <p>
+          All characters were in the range <code>0-9</code> and
+          <code>a-f</code> — this is <strong>hexadecimal encoding</strong>. Two
+          hex characters represent one byte, so 65536 hex chars = 32768 bytes of
+          actual data.
+        </p>
+
+        <!-- Step 2 -->
+        <h2 data-num="03">Step 2 — Hex Decode</h2>
+        <p>
+          We decoded the hex data to a binary file using Python's
+          <code>xxd</code> or a quick Python one-liner:
+        </p>
+
+        <div class="code-block">
+          <div class="code-header">
+            <div class="code-dots"><span></span><span></span><span></span></div>
+            <span class="code-lang">bash</span>
+          </div>
+          <pre><span class="cm"># Method 1: using xxd</span>
+cat TheNewAge | xxd -r -p > TheNewAge_decoded
+
+<span class="cm"># Method 2: using Python</span>
+python3 -c <span class="str">"import binascii; open('decoded','wb').write(binascii.unhexlify(open('TheNewAge').read().strip()))"</span>
+
+<span class="cm"># Check what we got</span>
+file TheNewAge_decoded</pre>
+        </div>
+
+        <p><strong>Output:</strong></p>
+        <div class="code-block">
+          <div class="code-header">
+            <div class="code-dots"><span></span><span></span><span></span></div>
+            <span class="code-lang">output</span>
+          </div>
+          <pre>TheNewAge_decoded: <span class="good">ASCII text</span></pre>
+        </div>
+
+        <!-- Step 3 -->
+        <h2 data-num="04">Step 3 — Identify the Decoded Content</h2>
+        <p>
+          The decoded file was ASCII text. We read the first few lines to
+          identify the format:
+        </p>
+
+        <div class="code-block">
+          <div class="code-header">
+            <div class="code-dots"><span></span><span></span><span></span></div>
+            <span class="code-lang">bash</span>
+          </div>
+          <pre>head -20 TheNewAge_decoded</pre>
+        </div>
+
+        <p><strong>Output:</strong></p>
+        <div class="code-block">
+          <div class="code-header">
+            <div class="code-dots"><span></span><span></span><span></span></div>
+            <span class="code-lang">obj</span>
+          </div>
+          <pre><span class="hl"># Object Export From Tinkercad Server 2015</span>
+mtllib obj.mtl
+o obj_0
+v -61.0902    29.0338    26.5442
+v -0.6105     27.5752    230.099
+v 20.8946     31.1703    87.5564
+v 40.6462     12.9427    141.5439
+v 40.8489     12.4286    141.3719
+v 41.0071     12.0279    141.2387
+v 46.7587     0.2398     115.1694
+v -0.4443     25.445     227.1899
+v 21.6485     35.3718    84.9128
+...</pre>
+        </div>
+
+        <div class="finding">
+          <div class="finding-label">⚡ Key Discovery</div>
+          <p>
+            The first line reveals everything:
+            <strong>"# Object Export From Tinkercad Server 2015"</strong> — this
+            is a <strong>Wavefront OBJ file</strong> exported from Tinkercad, a
+            popular 3D design tool. The <code>v</code> lines are 3D vertices (x,
+            y, z coordinates).
+          </p>
+        </div>
+
+        <h3>What is a Wavefront OBJ file?</h3>
+
+        <div class="format-grid">
+          <div class="format-card">
+            <div class="format-icon">📍</div>
+            <div class="format-name">v x y z</div>
+            <div class="format-desc">
+              Vertex — a point in 3D space defined by x, y, z coordinates.
+            </div>
+          </div>
+          <div class="format-card">
+            <div class="format-icon">🔺</div>
+            <div class="format-name">f v1 v2 v3</div>
+            <div class="format-desc">
+              Face — connects vertices to form a polygon (triangle or quad).
+            </div>
+          </div>
+          <div class="format-card">
+            <div class="format-icon">📐</div>
+            <div class="format-name">vn x y z</div>
+            <div class="format-desc">
+              Vertex normal — defines the direction a surface faces for
+              lighting.
+            </div>
+          </div>
+          <div class="format-card">
+            <div class="format-icon">🏷️</div>
+            <div class="format-name">o name</div>
+            <div class="format-desc">
+              Object name — groups geometry into named objects within the file.
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 4 -->
+        <h2 data-num="05">Step 4 — Rename and Render in 3D Viewer</h2>
+        <p>
+          We renamed the decoded file with the <code>.obj</code> extension so 3D
+          viewers would recognize it:
+        </p>
+
+        <div class="code-block">
+          <div class="code-header">
+            <div class="code-dots"><span></span><span></span><span></span></div>
+            <span class="code-lang">bash</span>
+          </div>
+          <pre>cp TheNewAge_decoded TheNewAge.obj</pre>
+        </div>
+
+        <p>
+          Then uploaded it to an online 3D viewer. We used
+          <strong>3dviewer.net</strong> — a free web-based OBJ viewer that
+          requires no installation:
+        </p>
+
+        <div class="warning-box">
+          <p>
+            <strong>Tools for viewing OBJ files:</strong> 3dviewer.net (web,
+            free), Blender (desktop, free), MeshLab (desktop, free), Autodesk
+            Viewer (web), or simply drag-and-drop into Windows 3D Viewer.
+          </p>
+        </div>
+
+        <!-- Step 5 -->
+        <h2 data-num="06">Step 5 — The Reveal</h2>
+        <p>
+          Opening the OBJ file in the 3D viewer revealed the model clearly — a
+          <strong>golfer figure</strong>: a person wearing a flat cap, dressed
+          in flared trousers, and firmly gripping a <strong>golf club</strong>.
+          However, the true discovery was not the man himself, but what stood
+          etched in the digital void next to him. Floating beside the figure,
+          rendered in sharp <strong>3D text</strong>, was the secret the giants
+          had hidden.
+        </p>
+
+        <div class="finding">
+          <div class="finding-label">🏌️ Flag Found</div>
+          <p>
+            Kratos used his Jotnar prophecy powers to see humanity's future —
+            and what he saw was a man standing beside a monument of his own
+            making. The answer wasn't just in the figure, but in the
+            <strong>3D text</strong> carved into the very air beside him. Shell
+            shocked and amused, the secret was revealed at last.
+          </p>
+        </div>
+
+        <div class="flag-box">
+          <div class="flag-icon">⛳</div>
+          <div>
+            <div class="flag-label">3D TEXT</div>
+            <div class="flag-value">REDFOX{TH15_Is_U77erly_Unu5u4l}</div>
+          </div>
+        </div>
+
+        <!-- Full Pipeline -->
+        <h2 data-num="07">Full Solution Pipeline</h2>
+
+        <div class="pipeline">
+          <div class="pipeline-title">// complete solve chain</div>
+          <div class="pipe-steps">
+            <div class="pipe-step">
+              <div class="pipe-num">1</div>
+              <div class="pipe-content">
+                <div class="pipe-label">Receive Unknown File</div>
+                <div class="pipe-desc">
+                  TheNewAge — no extension, no context
+                </div>
+                <span class="pipe-badge badge-file">TheNewAge</span>
+              </div>
+            </div>
+
+            <div class="pipe-step">
+              <div class="pipe-num">2</div>
+              <div class="pipe-content">
+                <div class="pipe-label">Run file Command</div>
+                <div class="pipe-desc">
+                  ASCII text, 65536 chars, no line terminators
+                </div>
+                <span class="pipe-badge badge-tool">file TheNewAge</span>
+              </div>
+            </div>
+
+            <div class="pipe-step">
+              <div class="pipe-num">3</div>
+              <div class="pipe-content">
+                <div class="pipe-label">Identify Hex Encoding</div>
+                <div class="pipe-desc">
+                  First bytes: 23204f626a656374... all 0-9, a-f → hex
+                </div>
+                <span class="pipe-badge badge-tool">head -c 100 TheNewAge</span>
+              </div>
+            </div>
+
+            <div class="pipe-step">
+              <div class="pipe-num">4</div>
+              <div class="pipe-content">
+                <div class="pipe-label">Decode Hex to Binary</div>
+                <div class="pipe-desc">
+                  65536 hex chars → 32768 bytes of ASCII text
+                </div>
+                <span class="pipe-badge badge-tool">xxd -r -p</span>
+              </div>
+            </div>
+
+            <div class="pipe-step">
+              <div class="pipe-num">5</div>
+              <div class="pipe-content">
+                <div class="pipe-label">Identify OBJ Format</div>
+                <div class="pipe-desc">
+                  # Object Export From Tinkercad Server 2015
+                </div>
+                <span class="pipe-badge badge-file">TheNewAge.obj</span>
+              </div>
+            </div>
+
+            <div class="pipe-step">
+              <div class="pipe-num">6</div>
+              <div class="pipe-content">
+                <div class="pipe-label">Open in 3D Viewer</div>
+                <div class="pipe-desc">Upload .obj to 3dviewer.net</div>
+                <span class="pipe-badge badge-tool">3dviewer.net</span>
+              </div>
+            </div>
+
+            <div class="pipe-step">
+              <div class="pipe-num">7</div>
+              <div class="pipe-content">
+                <div class="pipe-label">Flag Captured</div>
+                <div class="pipe-desc">
+                  3D model = 3D text → REDFOX{TH15_Is_U77erly_Unu5u4l}
+                </div>
+                <span class="pipe-badge badge-file">⛳ Golf</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <hr class="divider" />
+
+        <!-- One-liner solution -->
+        <h2 data-num="08">One-Liner Solution</h2>
+        <p>
+          Once you know the technique, the entire decode can be done in a single
+          command:
+        </p>
+
+        <div class="code-block">
+          <div class="code-header">
+            <div class="code-dots"><span></span><span></span><span></span></div>
+            <span class="code-lang">bash</span>
+          </div>
+          <pre><span class="cm"># Full pipeline: hex decode → save as OBJ</span>
+cat TheNewAge | xxd -r -p > solution.obj && file solution.obj && head -3 solution.obj</pre>
+        </div>
+
+        <p><strong>Output:</strong></p>
+        <div class="code-block">
+          <div class="code-header">
+            <div class="code-dots"><span></span><span></span><span></span></div>
+            <span class="code-lang">output</span>
+          </div>
+          <pre>solution.obj: ASCII text
+<span class="good"># Object Export From Tinkercad Server 2015</span>
+mtllib obj.mtl
+o obj_0</pre>
+        </div>
+
+        <p>
+          Then drag <code>solution.obj</code> into
+          <a href="https://3dviewer.net" style="color: var(--accent)"
+            >3dviewer.net</a
+          >
+          to reveal the golfer.
+        </p>
+
+        <hr class="divider" />
+
+        <!-- Key Lessons -->
+        <h2 data-num="09">Key Lessons</h2>
+
+        <h3>1. Always Run file First</h3>
+        <p>
+          Never trust the filename or extension. The <code>file</code> command
+          reads the actual content (magic bytes and structure) to determine the
+          true file type. This is the first command to run on any unknown file
+          in a forensics challenge.
+        </p>
+
+        <h3>2. Long Single-Line ASCII = Encoded Data</h3>
+        <p>
+          A file that is all ASCII but has no newlines and is very long is
+          almost always encoded binary data. The most common encodings are
+          base64 (uses A-Z, a-z, 0-9, +, /) and hex (only 0-9, a-f). Check the
+          character set to determine which one.
+        </p>
+
+        <div class="code-block">
+          <div class="code-header">
+            <div class="code-dots"><span></span><span></span><span></span></div>
+            <span class="code-lang">quick identification cheatsheet</span>
+          </div>
+          <pre><span class="cm"># Characters only 0-9 and a-f (or A-F) → HEX encoding</span>
+<span class="cm"># Characters A-Z, a-z, 0-9, +, / and ends with = → BASE64</span>
+<span class="cm"># Starts with eyJ → Base64-encoded JSON (likely JWT)</span>
+<span class="cm"># Characters only 0 and 1 → BINARY encoding</span>
+<span class="cm"># Printable ASCII with structure → direct text format</span>
+
+<span class="cm"># Quick check for hex vs base64:</span>
+head -c 20 file | grep -P <span class="str">'^[0-9a-fA-F]+$'</span> && echo <span class="str">"HEX"</span> || echo <span class="str">"Not pure hex"</span></pre>
+        </div>
+
+        <h3>3. Check the First Line for Format Clues</h3>
+        <p>
+          Many file formats embed human-readable identifiers in their first line
+          or as comments. The OBJ format starts with <code>#</code> comment
+          lines. Always read the first few lines of decoded data — they often
+          immediately tell you what format you're dealing with.
+        </p>
+
+        <h3>4. Visual Challenges Require Visual Tools</h3>
+        <p>
+          Once we identified the OBJ format, trying to read vertex coordinates
+          manually would have been futile. The correct approach is always to use
+          the right tool for the format — a 3D viewer for 3D models, an image
+          viewer for images, a hex editor for binary, and so on.
+        </p>
+
+        <h3>5. Power of 2 File Sizes Are a Hint</h3>
+        <p>
+          65536 characters is exactly 2^16. When you see file sizes or lengths
+          that are powers of 2, it often signals encoding or padding — worth
+          noting as a clue during initial analysis.
+        </p>
+      </article>
+    </div>
+
+    <footer>
+      <div class="container">
+        <div class="footer-content">
+          <div class="footer-text">
+            RedFox CTF 2026 — Hex to 3D OBJ Forensics Writeup
+          </div>
+          <div class="footer-badge">✓ SOLVED</div>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>
